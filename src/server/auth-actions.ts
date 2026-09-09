@@ -1,13 +1,15 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { getPersonal } from "./db";
+import { apiFetch, ApiError } from "./api-client";
 import { SESSION_COOKIE } from "./session";
-import type { SesionUsuario } from "@/types";
 
-// Login solo de demostración: cualquier DNI o alias que exista en la nómina
-// de personal, junto con cualquier contraseña no vacía, inicia sesión. No
-// hay backend de autenticación real detrás de esto.
+const SIETE_DIAS = 60 * 60 * 24 * 7;
+
+const MENSAJES_ERROR: Record<string, string> = {
+  CREDENCIALES_INVALIDAS: "Usuario o contraseña incorrectos.",
+};
+
 export async function login(
   usuario: string,
   password: string
@@ -16,29 +18,29 @@ export async function login(
     return { ok: false, error: "Ingresá usuario y contraseña." };
   }
 
-  const personal = await getPersonal();
-  const persona =
-    personal.find((p) => p.dni === usuario.trim()) ??
-    personal.find((p) => p.alias.toLowerCase() === usuario.trim().toLowerCase()) ??
-    personal[0];
-
-  if (!persona) {
-    return { ok: false, error: "No hay personal cargado para iniciar sesión." };
+  let token: string;
+  try {
+    const respuesta = await apiFetch<{ token: string }>("/auth/login", {
+      method: "POST",
+      body: { username: usuario.trim(), password },
+    });
+    token = respuesta.token;
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, error: MENSAJES_ERROR[err.code] ?? err.message };
+    }
+    return {
+      ok: false,
+      error: "No se pudo conectar con el servidor. Probá de nuevo en un momento.",
+    };
   }
 
-  const session: SesionUsuario = {
-    personalId: persona.id,
-    nombre: persona.apellidoNombre,
-    sucursalId: persona.sucursalId,
-    tipoPersonal: persona.tipoPersonal,
-  };
-
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, JSON.stringify(session), {
+  cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7, // 7 días
+    maxAge: SIETE_DIAS,
   });
 
   return { ok: true };

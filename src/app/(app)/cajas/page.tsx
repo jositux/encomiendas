@@ -12,7 +12,7 @@ export default async function CierreCajaPage() {
     <CierreCajaView
       personal={personal}
       encomiendas={encomiendas}
-      defaultPersonalId={session?.personalId ?? personal[0]?.id ?? ""}
+      defaultPersonalId={session?.usuarioId ?? personal[0]?.id ?? ""}
     />
   );
 }

@@ -16,7 +16,7 @@ export default async function AppLayout({
   if (!session) redirect("/login");
 
   const sucursales = await getSucursales();
-  const sucursal = sucursales.find((s) => s.id === session.sucursalId) ?? null;
+  const sucursal = sucursales.find((s) => s.id === session.puntoId) ?? null;
 
   return (
     <div className="flex h-svh w-full overflow-hidden bg-muted/30">

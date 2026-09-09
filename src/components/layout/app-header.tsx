@@ -31,7 +31,6 @@ import { logout } from "@/server/auth-actions";
 import { resetDemoDataAction } from "@/server/actions";
 import { ALL_NAV_ITEMS } from "@/lib/nav-config";
 import { initials } from "@/lib/format";
-import { TIPO_PERSONAL_LABEL } from "@/lib/mock/personal";
 import type { SesionUsuario, Sucursal } from "@/types";
 
 export function AppHeader({
@@ -126,7 +125,7 @@ export function AppHeader({
           <DropdownMenuLabel className="font-normal">
             <p className="truncate text-sm font-medium">{session.nombre}</p>
             <p className="text-xs text-muted-foreground">
-              {TIPO_PERSONAL_LABEL[session.tipoPersonal]}
+              {session.esGlobal ? "Alcance global" : "Alcance de sucursal"}
             </p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />

@@ -210,9 +210,15 @@ export interface MovimientoCrr {
 
 // -- Auth ---------------------------------------------------------------------
 
+// Refleja 1:1 lo que devuelve GET /auth/yo del backend real (ver
+// src/identidad/auth/auth.controller.ts, interfaz ContextoPropio). No se
+// inventan campos que el backend no tiene: no hay un "tipoPersonal"/rol legible
+// acá, solo permisos planos y el alcance (punto propio + puntos habilitados).
 export interface SesionUsuario {
-  personalId: string;
+  usuarioId: string;
   nombre: string;
-  sucursalId: string;
-  tipoPersonal: TipoPersonal;
+  puntoId: string;
+  esGlobal: boolean;
+  puntosEnAlcance: string[];
+  permisos: string[];
 }

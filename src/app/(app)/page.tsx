@@ -22,7 +22,7 @@ export default async function HomePage() {
     getSucursales(),
     getSession(),
   ]);
-  const sucursal = sucursales.find((s) => s.id === session?.sucursalId);
+  const sucursal = sucursales.find((s) => s.id === session?.puntoId);
 
   const pendientes = encomiendas.filter((e) => e.estado === "PENDIENTE").length;
   const enTransito = encomiendas.filter((e) => e.estado === "EN_TRANSITO").length;

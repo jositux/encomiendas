@@ -5,5 +5,5 @@ import { PanelView } from "./panel-view";
 export default async function PanelPage() {
   const [encomiendas, session] = await Promise.all([getEncomiendas(), getSession()]);
 
-  return <PanelView encomiendas={encomiendas} personalId={session?.personalId ?? null} />;
+  return <PanelView encomiendas={encomiendas} personalId={session?.usuarioId ?? null} />;
 }
