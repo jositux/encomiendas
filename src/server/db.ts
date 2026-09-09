@@ -13,6 +13,7 @@ import "server-only";
 // ---------------------------------------------------------------------------
 
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import type {
   Cliente,
@@ -63,20 +64,49 @@ function seedData(): Db {
   };
 }
 
-const DB_PATH = path.join(process.cwd(), ".data", "db.json");
+// En desarrollo local esto vive dentro del proyecto (carpeta `.data/`,
+// ignorada por git). En un deployment serverless (Vercel y similares) el
+// filesystem del proyecto es de solo lectura salvo `/tmp` — en vez de
+// confiar en una variable de entorno de la plataforma para detectarlo (poco
+// confiable: depende de que el proyecto la tenga habilitada), probamos
+// escribir ahí y si falla caemos a `/tmp`. Ojo: `/tmp` no es un disco
+// persistente — cada instancia serverless (y cada cold start) puede partir
+// de una copia distinta, así que en producción esto se comporta como una
+// base de datos "de mentira" que puede resetearse sola. Sirve para la demo,
+// no reemplaza un backend real.
+const PRIMARY_DB_PATH = path.join(process.cwd(), ".data", "db.json");
+const FALLBACK_DB_PATH = path.join(os.tmpdir(), "neo-encomiendas-data", "db.json");
+
+let dbPathPromise: Promise<string> | null = null;
+
+async function resolveDbPath(): Promise<string> {
+  if (!dbPathPromise) {
+    dbPathPromise = (async () => {
+      try {
+        await fs.mkdir(path.dirname(PRIMARY_DB_PATH), { recursive: true });
+        await fs.access(path.dirname(PRIMARY_DB_PATH), fs.constants.W_OK);
+        return PRIMARY_DB_PATH;
+      } catch {
+        return FALLBACK_DB_PATH;
+      }
+    })();
+  }
+  return dbPathPromise;
+}
 
 // Cache en memoria del proceso: evita releer el archivo en cada llamada
 // dentro del mismo request/proceso. Se actualiza en cada escritura.
 let memo: Db | null = null;
 
 async function ensureFile(): Promise<Db> {
+  const dbPath = await resolveDbPath();
   try {
-    const raw = await fs.readFile(DB_PATH, "utf-8");
+    const raw = await fs.readFile(dbPath, "utf-8");
     return JSON.parse(raw) as Db;
   } catch {
     const seed = seedData();
-    await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
-    await fs.writeFile(DB_PATH, JSON.stringify(seed, null, 2), "utf-8");
+    await fs.mkdir(path.dirname(dbPath), { recursive: true });
+    await fs.writeFile(dbPath, JSON.stringify(seed, null, 2), "utf-8");
     return seed;
   }
 }
@@ -89,8 +119,9 @@ async function readDb(): Promise<Db> {
 
 async function writeDb(next: Db): Promise<void> {
   memo = next;
-  await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
-  await fs.writeFile(DB_PATH, JSON.stringify(next, null, 2), "utf-8");
+  const dbPath = await resolveDbPath();
+  await fs.mkdir(path.dirname(dbPath), { recursive: true });
+  await fs.writeFile(dbPath, JSON.stringify(next, null, 2), "utf-8");
 }
 
 function nextId(prefix: string) {
