@@ -132,6 +132,21 @@ export interface Vehiculo {
   choferId?: string;
 }
 
+// Refleja GET /vehiculos del backend real. Sin marca/modelo/año/estado (el
+// backend etapa 1 no modela ficha de vehículo) ni choferId (el chofer se
+// asigna al despacho/recorrido, no al vehículo — eliminado a propósito, ver
+// src/server/services/vehiculos.ts).
+export interface VehiculoBackend {
+  id: string;
+  nombre: string;
+  tipo: string;
+  patente: string | null;
+  activo: boolean;
+}
+
+// `Sucursal` sigue siendo la forma legacy/mock (la usa el header para el
+// puntito de color junto al nombre de sucursal del usuario). La pantalla de
+// administración `/sucursales` ya no usa este tipo — ver `PuntoBackend`.
 export interface Sucursal {
   id: string;
   nombre: string;
@@ -143,6 +158,21 @@ export interface Sucursal {
   direccion?: string;
 }
 
+// Refleja GET /puntos del backend real (+ nombre de localidad ya resuelto).
+// No tiene `color`/`codigo`/`procesarHastaHora`/`participaCorte`: no existen
+// en el backend. `procesarHastaHora` en particular lo reemplaza
+// `recorrido.hora_corte` (ver src/server/services/puntos.ts).
+export interface PuntoBackend {
+  id: string;
+  nombre: string;
+  localidadId: string;
+  localidadNombre: string;
+  tipo: "base" | "deposito";
+  esCasaCentral: boolean;
+  esDepositoCentral: boolean;
+  activo: boolean;
+}
+
 export interface GrupoRuta {
   id: string;
   nombre: string;
@@ -152,12 +182,48 @@ export interface GrupoRuta {
   activo: boolean;
 }
 
+// Refleja GET /recorridos del backend real (+ nombres ya resueltos y las
+// localidades cubiertas, derivadas de qué sectores apuntan a este recorrido
+// — ver src/server/services/recorridos.ts).
+export interface RecorridoBackend {
+  id: string;
+  nombre: string;
+  baseId: string;
+  baseNombre: string;
+  choferPredeterminadoId: string | null;
+  choferNombre: string | null;
+  vehiculoPredeterminadoId: string | null;
+  vehiculoNombre: string | null;
+  horaCorte: string | null;
+  activo: boolean;
+  localidadIds: string[];
+}
+
+// `Localidad` sigue siendo la forma "legacy"/mock que usa el resto de la app
+// (Nueva Encomienda, Clientes, etc. — sin tocar). La pantalla de
+// administración de Localidades (`/localidades`) ya no usa este tipo: pega
+// contra el backend real, que tiene una forma distinta (ver
+// `LocalidadBackend` más abajo y src/server/services/localidades.ts).
 export interface Localidad {
   id: string;
   nombre: string;
   provincia: Provincia;
   corte: boolean;
   despachaSabados: boolean;
+}
+
+// Refleja GET /localidades del backend real (más el nombre de provincia ya
+// resuelto server-side, para no pegarle a /provincias también desde la UI).
+// El backend no tiene `corte` ni `despachaSabados` en localidad — según
+// obsidian_vault/wiki/entities/modelo-geografico.md del backend, "corte" es
+// una propiedad de un PAR de localidades (`servicio_par.tiene_corte`), y
+// "despacha sábados" es una regla fija de toda la empresa, no algo que se
+// configure localidad por localidad.
+export interface LocalidadBackend {
+  id: string;
+  nombre: string;
+  provinciaId: string;
+  provinciaNombre: string;
 }
 
 // -- Cajas / rendicion diaria -------------------------------------------------

@@ -2,17 +2,14 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { PackagePlus, Truck, Mail, Printer } from "lucide-react";
+import { PackagePlus, Truck } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
-import { ProvinciaLocalidadSelect } from "@/components/shared/provincia-localidad-select";
+import { LocalidadSectorSelect } from "@/components/shared/localidad-sector-select";
 import { ClienteQuickPick } from "@/components/shared/cliente-quick-pick";
-import { EstadoBadge, TipoBadge } from "@/components/shared/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -22,98 +19,130 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { createEncomiendaAction } from "@/server/actions";
-import { GRUPOS_RUTA } from "@/lib/mock/rutas";
-import { localidadNombre } from "@/lib/mock/localidades";
-import { formatDateTime } from "@/lib/format";
+import { crearEnvioAction } from "@/server/actions";
 import type {
-  Cliente,
-  ContactoEncomienda,
-  Encomienda,
-  Provincia,
-  SesionUsuario,
-  TipoEncomienda,
-} from "@/types";
+  CrearEnvioInput,
+  EnvioApi,
+  FormaPagoApi,
+  LugarPagoApi,
+  TipoEnvioApi,
+} from "@/server/services/envios";
+import type { ClienteApi } from "@/server/services/clientes";
+import type { SectorApi } from "@/server/services/sectores";
+import type { LocalidadBackend, SesionUsuario } from "@/types";
 
-const TIPOS: { value: TipoEncomienda; label: string }[] = [
-  { value: "PAQUETERIA", label: "Paquetería" },
-  { value: "CRR", label: "Contra reembolso (CRR)" },
-  { value: "TRAMITE", label: "Trámite" },
-  { value: "INTERNO", label: "Interno" },
+const TIPOS: { value: TipoEnvioApi; label: string }[] = [
+  { value: "paqueteria", label: "Paquetería" },
+  { value: "efectivo", label: "Contra reembolso" },
+  { value: "tramite", label: "Trámite" },
+  { value: "interno", label: "Interno" },
 ];
 
-function emptyContacto(): ContactoEncomienda {
+const LUGARES_PAGO: { value: LugarPagoApi; label: string }[] = [
+  { value: "origen", label: "Origen" },
+  { value: "destino", label: "Destino" },
+  { value: "regreso", label: "Contra entrega (regreso)" },
+];
+
+const FORMAS_PAGO: { value: FormaPagoApi; label: string }[] = [
+  { value: "contado", label: "Contado" },
+  { value: "cuenta_corriente", label: "Cuenta corriente" },
+];
+
+interface OrigenState {
+  nombre: string;
+  telefono: string;
+  clienteId?: string;
+}
+
+interface DestinoState {
+  nombre: string;
+  telefono: string;
+  calle: string;
+  numero: string;
+  piso: string;
+  referencia: string;
+  localidadId: string;
+  sectorId: string;
+  clienteId?: string;
+  domicilioId?: string;
+}
+
+function emptyOrigen(): OrigenState {
+  return { nombre: "", telefono: "" };
+}
+
+function emptyDestino(localidades: LocalidadBackend[], sectores: SectorApi[]): DestinoState {
+  const localidadId = localidades[0]?.id ?? "";
+  const sectorId = sectores.find((s) => s.localidadId === localidadId)?.id ?? "";
   return {
     nombre: "",
     telefono: "",
-    esCelular: true,
-    direccion: "",
-    localidadId: "mis-obera",
-    provincia: "MISIONES",
+    calle: "",
+    numero: "",
+    piso: "",
+    referencia: "",
+    localidadId,
+    sectorId,
   };
 }
 
-function letraDelDia(n: number) {
-  return String.fromCharCode(65 + (n % 26));
+function guiaDeEnvio(e: EnvioApi): string {
+  // La guía real (letra+numero, ej. "C1") que usa el negocio en mostrador
+  // viene en guiaDiaria. `numero` es un correlativo interno ("000000001-7"),
+  // no lo que se dice/escribe como guía. Confirmado probando en vivo.
+  return e.guiaDiaria ?? e.numero ?? e.id?.slice(0, 8) ?? "—";
 }
 
 export function NuevaEncomiendaView({
-  encomiendas,
-  clientes,
+  localidades,
+  sectores,
+  envios,
   session,
 }: {
-  encomiendas: Encomienda[];
-  clientes: Cliente[];
+  localidades: LocalidadBackend[];
+  sectores: SectorApi[];
+  envios: EnvioApi[];
   session: SesionUsuario | null;
 }) {
-  const [rutaId, setRutaId] = React.useState<string>("");
-  const [paqueteConmigo, setPaqueteConmigo] = React.useState(false);
-  const [origen, setOrigen] = React.useState<ContactoEncomienda>(emptyContacto());
-  const [destino, setDestino] = React.useState<ContactoEncomienda>(emptyContacto());
-  const [tipo, setTipo] = React.useState<TipoEncomienda>("PAQUETERIA");
-  const [esSobre, setEsSobre] = React.useState(false);
+  const [origen, setOrigen] = React.useState<OrigenState>(emptyOrigen());
+  const [destino, setDestino] = React.useState<DestinoState>(() =>
+    emptyDestino(localidades, sectores)
+  );
+  const [tipo, setTipo] = React.useState<TipoEnvioApi>("paqueteria");
+  const [lugarPago, setLugarPago] = React.useState<LugarPagoApi>("destino");
+  const [formaPago, setFormaPago] = React.useState<FormaPagoApi>("contado");
   const [bultos, setBultos] = React.useState(1);
   const [flete, setFlete] = React.useState<number | "">("");
   const [montoCrr, setMontoCrr] = React.useState<number | "">("");
-  const [observaciones, setObservaciones] = React.useState("");
+  const [remitoManual, setRemitoManual] = React.useState("");
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [submitting, setSubmitting] = React.useState(false);
-
-  const proximoRemito = React.useMemo(() => {
-    const max = encomiendas.reduce((acc, e) => {
-      const n = Number(e.remito);
-      return Number.isFinite(n) && n > acc ? n : acc;
-    }, 100000);
-    return String(max + 1);
-  }, [encomiendas]);
-
-  const hoy = encomiendas.filter((e) => {
-    const d = new Date(e.fechaAlta);
-    return d.toDateString() === new Date().toDateString();
-  });
+  const [cargados, setCargados] = React.useState<EnvioApi[]>(envios);
 
   function validate() {
     const next: Record<string, string> = {};
-    if (!origen.nombre.trim()) next.origenNombre = "Ingresá el cliente de origen.";
-    if (!origen.direccion.trim()) next.origenDireccion = "Ingresá la dirección de origen.";
+    if (!origen.nombre.trim()) next.origenNombre = "Ingresá el remitente.";
     if (!destino.nombre.trim()) next.destinoNombre = "Ingresá el destinatario.";
-    if (!destino.direccion.trim()) next.destinoDireccion = "Ingresá la dirección de destino.";
-    if (tipo === "CRR" && (montoCrr === "" || Number(montoCrr) <= 0))
+    if (!destino.calle.trim()) next.destinoCalle = "Ingresá la calle de destino.";
+    if (!destino.localidadId) next.destinoLocalidad = "Elegí la localidad de destino.";
+    if (!destino.sectorId) next.destinoSector = "Elegí el sector de destino.";
+    if (tipo === "efectivo" && (montoCrr === "" || Number(montoCrr) <= 0))
       next.montoCrr = "Ingresá el monto a reembolsar.";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
 
   function resetForm() {
-    setOrigen(emptyContacto());
-    setDestino(emptyContacto());
-    setTipo("PAQUETERIA");
-    setEsSobre(false);
+    setOrigen(emptyOrigen());
+    setDestino(emptyDestino(localidades, sectores));
+    setTipo("paqueteria");
+    setLugarPago("destino");
+    setFormaPago("contado");
     setBultos(1);
     setFlete("");
     setMontoCrr("");
-    setObservaciones("");
-    setPaqueteConmigo(false);
+    setRemitoManual("");
     setErrors({});
   }
 
@@ -125,31 +154,42 @@ export function NuevaEncomiendaView({
     }
 
     setSubmitting(true);
-    const created = await createEncomiendaAction({
-      remito: proximoRemito,
-      letraDia: letraDelDia(hoy.length),
-      fechaAlta: new Date().toISOString(),
-      origen,
-      destino,
-      tipo,
-      esSobre,
-      observaciones: observaciones.trim() || undefined,
-      estado: "PENDIENTE",
-      rutaId: rutaId || undefined,
-      sucursalId: session.puntoId,
-      operadorId: session.usuarioId,
-      bultos,
-      flete: flete === "" ? 0 : Number(flete),
-      montoCrr: tipo === "CRR" ? Number(montoCrr) : undefined,
-      formaPago: "PAGADO_DESTINO",
-      fleteCobrado: false,
-      crrCobrado: false,
-      paqueteConmigo,
-    });
-    setSubmitting(false);
-
-    toast.success(`Encomienda ${created.remito} cargada correctamente`);
-    resetForm();
+    try {
+      const data: CrearEnvioInput = {
+        remitente: {
+          nombre: origen.nombre.trim(),
+          telefono: origen.telefono.trim(),
+          clienteId: origen.clienteId,
+        },
+        destinatario: {
+          nombre: destino.nombre.trim(),
+          telefono: destino.telefono.trim(),
+          calle: destino.calle.trim(),
+          numero: destino.numero.trim() || undefined,
+          piso: destino.piso.trim() || undefined,
+          referencia: destino.referencia.trim() || undefined,
+          localidadId: destino.localidadId,
+          sectorId: destino.sectorId,
+          clienteId: destino.clienteId,
+          domicilioId: destino.domicilioId,
+        },
+        cantidadBultos: bultos,
+        fleteImporte: flete === "" ? 0 : Number(flete),
+        tipo,
+        lugarPago,
+        formaPago,
+        contrarreembolsoImporte: tipo === "efectivo" ? Number(montoCrr) : undefined,
+        remitoManualNumero: remitoManual.trim() || undefined,
+      };
+      const created = await crearEnvioAction(data);
+      setCargados((prev) => [created, ...prev]);
+      toast.success(`Encomienda ${guiaDeEnvio(created)} cargada correctamente`);
+      resetForm();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo cargar la encomienda.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -157,84 +197,192 @@ export function NuevaEncomiendaView({
       <PageHeader
         title="Nueva encomienda"
         description="Cargá una encomienda nueva con los datos de origen y destino."
-        actions={
-          <div className="text-right text-xs text-muted-foreground">
-            <p>
-              N° Remito propuesto{" "}
-              <span className="font-mono font-semibold text-foreground">
-                {proximoRemito}
-              </span>
-            </p>
-            <p>
-              Letra del día{" "}
-              <span className="font-mono font-semibold text-foreground">
-                {letraDelDia(hoy.length)}
-              </span>
-            </p>
-          </div>
-        }
       />
 
       <form onSubmit={handleSubmit} className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <Card>
           <CardContent className="flex flex-col gap-6">
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="grid min-w-48 flex-1 gap-1.5">
-                <Label htmlFor="ruta" className="text-xs text-muted-foreground">
-                  Levanta (ruta / chofer)
-                </Label>
-                <Select value={rutaId} onValueChange={setRutaId}>
-                  <SelectTrigger id="ruta" className="w-full">
-                    <SelectValue placeholder="Levanta (yo)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GRUPOS_RUTA.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.nombre}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <label className="flex items-center gap-2 pt-5 text-sm">
-                <Checkbox
-                  checked={paqueteConmigo}
-                  onCheckedChange={(v) => setPaqueteConmigo(v === true)}
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <PackagePlus className="size-4" />
+                  Datos de origen
+                </p>
+                <ClienteQuickPick
+                  onSelect={(c: ClienteApi) =>
+                    setOrigen({ nombre: c.nombre, telefono: c.telefono, clienteId: c.id })
+                  }
                 />
-                Paquete conmigo
-              </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="origen-nombre" className="text-xs text-muted-foreground">
+                    Remitente
+                  </Label>
+                  <Input
+                    id="origen-nombre"
+                    value={origen.nombre}
+                    onChange={(e) =>
+                      setOrigen({ ...origen, nombre: e.target.value, clienteId: undefined })
+                    }
+                    aria-invalid={!!errors.origenNombre}
+                  />
+                  {errors.origenNombre && (
+                    <p className="text-xs text-destructive">{errors.origenNombre}</p>
+                  )}
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="origen-telefono" className="text-xs text-muted-foreground">
+                    Teléfono
+                  </Label>
+                  <Input
+                    id="origen-telefono"
+                    value={origen.telefono}
+                    onChange={(e) => setOrigen({ ...origen, telefono: e.target.value })}
+                  />
+                </div>
+              </div>
             </div>
 
             <Separator />
 
-            <ContactoFields
-              title="Datos de origen"
-              icon={<PackagePlus className="size-4" />}
-              value={origen}
-              onChange={setOrigen}
-              errors={{ nombre: errors.origenNombre, direccion: errors.origenDireccion }}
-              idPrefix="origen"
-              clientes={clientes}
-            />
-
-            <Separator />
-
-            <ContactoFields
-              title="Datos de destino"
-              icon={<Truck className="size-4" />}
-              value={destino}
-              onChange={setDestino}
-              errors={{ nombre: errors.destinoNombre, direccion: errors.destinoDireccion }}
-              idPrefix="destino"
-              clientes={clientes}
-            />
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <Truck className="size-4" />
+                  Datos de destino
+                </p>
+                <ClienteQuickPick
+                  onSelect={(c: ClienteApi) => {
+                    const dom =
+                      c.domicilios.find((d) => d.esPredeterminado) ?? c.domicilios[0];
+                    setDestino({
+                      nombre: c.nombre,
+                      telefono: c.telefono,
+                      calle: dom?.calle ?? "",
+                      numero: dom?.numero ?? "",
+                      piso: dom?.piso ?? "",
+                      referencia: dom?.referencia ?? "",
+                      localidadId: dom?.localidadId ?? destino.localidadId,
+                      sectorId: dom?.sectorId ?? destino.sectorId,
+                      clienteId: c.id,
+                      domicilioId: dom?.id,
+                    });
+                  }}
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="destino-nombre" className="text-xs text-muted-foreground">
+                    Destinatario
+                  </Label>
+                  <Input
+                    id="destino-nombre"
+                    value={destino.nombre}
+                    onChange={(e) =>
+                      setDestino({
+                        ...destino,
+                        nombre: e.target.value,
+                        clienteId: undefined,
+                        domicilioId: undefined,
+                      })
+                    }
+                    aria-invalid={!!errors.destinoNombre}
+                  />
+                  {errors.destinoNombre && (
+                    <p className="text-xs text-destructive">{errors.destinoNombre}</p>
+                  )}
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="destino-telefono" className="text-xs text-muted-foreground">
+                    Teléfono
+                  </Label>
+                  <Input
+                    id="destino-telefono"
+                    value={destino.telefono}
+                    onChange={(e) => setDestino({ ...destino, telefono: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="destino-calle" className="text-xs text-muted-foreground">
+                    Calle
+                  </Label>
+                  <Input
+                    id="destino-calle"
+                    value={destino.calle}
+                    onChange={(e) => setDestino({ ...destino, calle: e.target.value })}
+                    aria-invalid={!!errors.destinoCalle}
+                  />
+                  {errors.destinoCalle && (
+                    <p className="text-xs text-destructive">{errors.destinoCalle}</p>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="destino-numero" className="text-xs text-muted-foreground">
+                      Número
+                    </Label>
+                    <Input
+                      id="destino-numero"
+                      value={destino.numero}
+                      onChange={(e) => setDestino({ ...destino, numero: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="destino-piso" className="text-xs text-muted-foreground">
+                      Piso/Depto
+                    </Label>
+                    <Input
+                      id="destino-piso"
+                      value={destino.piso}
+                      onChange={(e) => setDestino({ ...destino, piso: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-1.5 sm:col-span-2">
+                  <Label htmlFor="destino-referencia" className="text-xs text-muted-foreground">
+                    Referencia (entre calles, color de casa, etc.)
+                  </Label>
+                  <Input
+                    id="destino-referencia"
+                    value={destino.referencia}
+                    onChange={(e) => setDestino({ ...destino, referencia: e.target.value })}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <LocalidadSectorSelect
+                    idPrefix="destino"
+                    localidades={localidades}
+                    sectores={sectores}
+                    localidadId={destino.localidadId}
+                    sectorId={destino.sectorId}
+                    onChangeLocalidad={(id) => {
+                      const primerSector = sectores.find((s) => s.localidadId === id)?.id ?? "";
+                      setDestino({
+                        ...destino,
+                        localidadId: id,
+                        sectorId: primerSector,
+                        clienteId: undefined,
+                        domicilioId: undefined,
+                      });
+                    }}
+                    onChangeSector={(id) => setDestino({ ...destino, sectorId: id })}
+                  />
+                  {(errors.destinoLocalidad || errors.destinoSector) && (
+                    <p className="mt-1 text-xs text-destructive">
+                      {errors.destinoLocalidad || errors.destinoSector}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
 
             <Separator />
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="grid gap-1.5">
                 <Label className="text-xs text-muted-foreground">Tipo</Label>
-                <Select value={tipo} onValueChange={(v) => setTipo(v as TipoEncomienda)}>
+                <Select value={tipo} onValueChange={(v) => setTipo(v as TipoEnvioApi)}>
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -268,7 +416,7 @@ export function NuevaEncomiendaView({
                   }
                 />
               </div>
-              {tipo === "CRR" && (
+              {tipo === "efectivo" && (
                 <div className="grid gap-1.5">
                   <Label className="text-xs text-muted-foreground">Monto a reembolsar</Label>
                   <Input
@@ -286,22 +434,50 @@ export function NuevaEncomiendaView({
                   )}
                 </div>
               )}
-              <label className="flex items-center gap-2 pt-5 text-sm">
-                <Checkbox checked={esSobre} onCheckedChange={(v) => setEsSobre(v === true)} />
-                Es un sobre
-              </label>
             </div>
 
-            <div className="grid gap-1.5">
-              <Label htmlFor="obs" className="text-xs text-muted-foreground">
-                Observaciones
-              </Label>
-              <Textarea
-                id="obs"
-                placeholder="Notas para el repartidor, fragilidad, horarios de entrega..."
-                value={observaciones}
-                onChange={(e) => setObservaciones(e.target.value)}
-              />
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-muted-foreground">Dónde se paga el flete</Label>
+                <Select value={lugarPago} onValueChange={(v) => setLugarPago(v as LugarPagoApi)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LUGARES_PAGO.map((l) => (
+                      <SelectItem key={l.value} value={l.value}>
+                        {l.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-muted-foreground">Forma de pago</Label>
+                <Select value={formaPago} onValueChange={(v) => setFormaPago(v as FormaPagoApi)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FORMAS_PAGO.map((f) => (
+                      <SelectItem key={f.value} value={f.value}>
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="remito-manual" className="text-xs text-muted-foreground">
+                  Remito manual (opcional)
+                </Label>
+                <Input
+                  id="remito-manual"
+                  placeholder="Solo si ya tenés un número impreso"
+                  value={remitoManual}
+                  onChange={(e) => setRemitoManual(e.target.value)}
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t pt-4">
@@ -318,146 +494,34 @@ export function NuevaEncomiendaView({
 
         <Card className="h-fit">
           <CardHeader>
-            <CardTitle className="text-sm">Cargadas hoy ({hoy.length})</CardTitle>
+            <CardTitle className="text-sm">Envíos recientes ({cargados.length})</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3 px-4">
-            {hoy.length === 0 && (
+            {cargados.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                Todavía no cargaste ninguna encomienda hoy.
+                Todavía no cargaste ninguna encomienda.
               </p>
             )}
             <div className="flex max-h-[560px] flex-col gap-2 overflow-y-auto pr-1">
-              {hoy.slice(0, 12).map((e) => (
-                <div
-                  key={e.id}
-                  className="rounded-lg border p-3 text-sm"
-                >
+              {cargados.slice(0, 12).map((e) => (
+                <div key={e.id} className="rounded-lg border p-3 text-sm">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono font-semibold">#{e.remito}</span>
-                    <EstadoBadge estado={e.estado} />
+                    <span className="font-mono font-semibold">#{guiaDeEnvio(e)}</span>
+                    {e.estadoActual && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
+                        {e.estadoActual}
+                      </span>
+                    )}
                   </div>
                   <p className="mt-1.5 truncate text-xs text-muted-foreground">
-                    {e.origen.nombre} → {e.destino.nombre}
+                    {e.remitenteNombre ?? "—"} → {e.destinatarioNombre ?? "—"}
                   </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {localidadNombre(e.destino.localidadId)} · {formatDateTime(e.fechaAlta)}
-                  </p>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <TipoBadge tipo={e.tipo} />
-                  </div>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
       </form>
-
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Printer className="size-3.5" /> Imprimir despachos
-        </Button>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Mail className="size-3.5" /> Enviar planilla
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function ContactoFields({
-  title,
-  icon,
-  value,
-  onChange,
-  errors,
-  idPrefix,
-  clientes,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  value: ContactoEncomienda;
-  onChange: (v: ContactoEncomienda) => void;
-  errors: { nombre?: string; direccion?: string };
-  idPrefix: string;
-  clientes: Cliente[];
-}) {
-  return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <p className="flex items-center gap-2 text-sm font-semibold">
-          {icon}
-          {title}
-        </p>
-        <ClienteQuickPick
-          clientes={clientes}
-          onSelect={(c) =>
-            onChange({
-              nombre: c.nombre,
-              telefono: c.telefono,
-              esCelular: c.esCelular,
-              direccion: c.domicilio,
-              localidadId: c.localidadId,
-              provincia: c.provincia,
-            })
-          }
-        />
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="grid gap-1.5">
-          <Label htmlFor={`${idPrefix}-nombre`} className="text-xs text-muted-foreground">
-            Cliente
-          </Label>
-          <Input
-            id={`${idPrefix}-nombre`}
-            value={value.nombre}
-            onChange={(e) => onChange({ ...value, nombre: e.target.value })}
-            aria-invalid={!!errors.nombre}
-          />
-          {errors.nombre && <p className="text-xs text-destructive">{errors.nombre}</p>}
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor={`${idPrefix}-telefono`} className="text-xs text-muted-foreground">
-            Teléfono
-          </Label>
-          <div className="flex items-center gap-2">
-            <Input
-              id={`${idPrefix}-telefono`}
-              value={value.telefono}
-              onChange={(e) => onChange({ ...value, telefono: e.target.value })}
-            />
-            <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-              <Checkbox
-                checked={value.esCelular}
-                onCheckedChange={(v) => onChange({ ...value, esCelular: v === true })}
-              />
-              Celular
-            </label>
-          </div>
-        </div>
-        <div className="grid gap-1.5 sm:col-span-2">
-          <Label htmlFor={`${idPrefix}-direccion`} className="text-xs text-muted-foreground">
-            Calle, altura
-          </Label>
-          <Input
-            id={`${idPrefix}-direccion`}
-            value={value.direccion}
-            onChange={(e) => onChange({ ...value, direccion: e.target.value })}
-            aria-invalid={!!errors.direccion}
-          />
-          {errors.direccion && (
-            <p className="text-xs text-destructive">{errors.direccion}</p>
-          )}
-        </div>
-        <div className="sm:col-span-2">
-          <ProvinciaLocalidadSelect
-            idPrefix={idPrefix}
-            provincia={value.provincia}
-            localidadId={value.localidadId}
-            onChangeProvincia={(p: Provincia) => onChange({ ...value, provincia: p })}
-            onChangeLocalidad={(id) => onChange({ ...value, localidadId: id })}
-          />
-        </div>
-      </div>
     </div>
   );
 }

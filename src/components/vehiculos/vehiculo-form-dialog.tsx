@@ -24,53 +24,48 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createVehiculoAction, updateVehiculoAction } from "@/server/actions";
-import type { Vehiculo, TipoVehiculo, EstadoVehiculo, Personal } from "@/types";
+import type { VehiculoBackend } from "@/types";
 
-type Draft = Omit<Vehiculo, "id">;
+type Draft = { nombre: string; tipo: string; patente: string };
 
 function emptyDraft(): Draft {
-  return {
-    patente: "",
-    marca: "",
-    modelo: "",
-    anio: new Date().getFullYear(),
-    tipo: "MOTO",
-    estado: "ACTIVO",
-    choferId: undefined,
-  };
+  return { nombre: "", tipo: "MOTO", patente: "" };
+}
+
+function toDraft(v: VehiculoBackend): Draft {
+  return { nombre: v.nombre, tipo: v.tipo, patente: v.patente ?? "" };
 }
 
 export function VehiculoFormDialog({
   vehiculo,
-  personal,
   trigger,
 }: {
-  vehiculo?: Vehiculo;
-  personal: Personal[];
+  vehiculo?: VehiculoBackend;
   trigger?: React.ReactNode;
 }) {
   const [open, setOpenState] = React.useState(false);
-  const [draft, setDraft] = React.useState<Draft>(vehiculo ?? emptyDraft());
+  const [draft, setDraft] = React.useState<Draft>(vehiculo ? toDraft(vehiculo) : emptyDraft());
   const [submitting, setSubmitting] = React.useState(false);
 
   function setOpen(next: boolean) {
-    if (next) setDraft(vehiculo ?? emptyDraft());
+    if (next) setDraft(vehiculo ? toDraft(vehiculo) : emptyDraft());
     setOpenState(next);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!draft.patente.trim() || !draft.marca.trim()) {
-      toast.error("Completá al menos la patente y la marca.");
+    if (!draft.nombre.trim()) {
+      toast.error("Completá el nombre.");
       return;
     }
     setSubmitting(true);
     try {
+      const patente = draft.patente.trim() || null;
       if (vehiculo) {
-        await updateVehiculoAction(vehiculo.id, draft);
+        await updateVehiculoAction(vehiculo.id, { nombre: draft.nombre, tipo: draft.tipo, patente });
         toast.success("Vehículo actualizado");
       } else {
-        await createVehiculoAction(draft);
+        await createVehiculoAction({ nombre: draft.nombre, tipo: draft.tipo, patente });
         toast.success("Vehículo agregado");
       }
       setOpen(false);
@@ -91,40 +86,20 @@ export function VehiculoFormDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{vehiculo ? "Editar vehículo" : "Nuevo vehículo"}</DialogTitle>
-          <DialogDescription>Datos de la unidad y chofer asignado.</DialogDescription>
+          <DialogDescription>Identidad de la unidad para despacho.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Patente</Label>
-              <Input
-                value={draft.patente}
-                onChange={(e) => setDraft({ ...draft, patente: e.target.value.toUpperCase() })}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Año</Label>
-              <Input
-                type="number"
-                value={draft.anio}
-                onChange={(e) => setDraft({ ...draft, anio: Number(e.target.value) })}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Marca</Label>
-              <Input value={draft.marca} onChange={(e) => setDraft({ ...draft, marca: e.target.value })} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Modelo</Label>
-              <Input value={draft.modelo} onChange={(e) => setDraft({ ...draft, modelo: e.target.value })} />
-            </div>
+          <div className="grid gap-1.5">
+            <Label>Nombre</Label>
+            <Input
+              value={draft.nombre}
+              onChange={(e) => setDraft({ ...draft, nombre: e.target.value })}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label>Tipo</Label>
-              <Select value={draft.tipo} onValueChange={(v) => setDraft({ ...draft, tipo: v as TipoVehiculo })}>
+              <Select value={draft.tipo} onValueChange={(v) => setDraft({ ...draft, tipo: v })}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -136,37 +111,12 @@ export function VehiculoFormDialog({
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label>Estado</Label>
-              <Select value={draft.estado} onValueChange={(v) => setDraft({ ...draft, estado: v as EstadoVehiculo })}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ACTIVO">Activo</SelectItem>
-                  <SelectItem value="INACTIVO">Inactivo</SelectItem>
-                  <SelectItem value="TALLER">En taller</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Patente</Label>
+              <Input
+                value={draft.patente}
+                onChange={(e) => setDraft({ ...draft, patente: e.target.value.toUpperCase() })}
+              />
             </div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Chofer asignado</Label>
-            <Select
-              value={draft.choferId ?? "none"}
-              onValueChange={(v) => setDraft({ ...draft, choferId: v === "none" ? undefined : v })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sin asignar</SelectItem>
-                {personal.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.apellidoNombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>

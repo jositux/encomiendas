@@ -14,7 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -33,14 +32,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createLocalidadAction, updateLocalidadAction } from "@/server/actions";
-import type { Localidad, Provincia } from "@/types";
+import { createLocalidadAction } from "@/server/actions";
+import type { LocalidadBackend } from "@/types";
+import type { ProvinciaApi } from "@/server/services/provincias";
 
-export function LocalidadesView({ localidades }: { localidades: Localidad[] }) {
+export function LocalidadesView({
+  localidades,
+  provincias,
+}: {
+  localidades: LocalidadBackend[];
+  provincias: ProvinciaApi[];
+}) {
   const [query, setQuery] = React.useState("");
   const [open, setOpen] = React.useState(false);
   const [nombre, setNombre] = React.useState("");
-  const [provincia, setProvincia] = React.useState<Provincia>("MISIONES");
+  const [provinciaId, setProvinciaId] = React.useState(provincias[0]?.id ?? "");
   const [submitting, setSubmitting] = React.useState(false);
 
   const filtered = localidades.filter((l) =>
@@ -52,13 +58,15 @@ export function LocalidadesView({ localidades }: { localidades: Localidad[] }) {
       toast.error("Ingresá el nombre de la localidad.");
       return;
     }
+    if (!provinciaId) {
+      toast.error("Elegí una provincia.");
+      return;
+    }
     setSubmitting(true);
     try {
       await createLocalidadAction({
         nombre: nombre.toUpperCase(),
-        provincia,
-        corte: false,
-        despachaSabados: false,
+        provinciaId,
       });
       toast.success("Localidad agregada");
       setNombre("");
@@ -91,14 +99,16 @@ export function LocalidadesView({ localidades }: { localidades: Localidad[] }) {
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Provincia</Label>
-                  <Select value={provincia} onValueChange={(v) => setProvincia(v as Provincia)}>
+                  <Select value={provinciaId} onValueChange={setProvinciaId}>
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="MISIONES">Misiones</SelectItem>
-                      <SelectItem value="CORRIENTES">Corrientes</SelectItem>
-                      <SelectItem value="CHACO">Chaco</SelectItem>
+                      {provincias.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.nombre}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -132,8 +142,6 @@ export function LocalidadesView({ localidades }: { localidades: Localidad[] }) {
             <TableRow className="hover:bg-transparent">
               <TableHead>Localidad</TableHead>
               <TableHead>Provincia</TableHead>
-              <TableHead>Corte</TableHead>
-              <TableHead>Despacha sábados</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -144,19 +152,7 @@ export function LocalidadesView({ localidades }: { localidades: Localidad[] }) {
                   {l.nombre}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline">{l.provincia}</Badge>
-                </TableCell>
-                <TableCell>
-                  <Switch
-                    checked={l.corte}
-                    onCheckedChange={(v) => updateLocalidadAction(l.id, { corte: v })}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Switch
-                    checked={l.despachaSabados}
-                    onCheckedChange={(v) => updateLocalidadAction(l.id, { despachaSabados: v })}
-                  />
+                  <Badge variant="outline">{l.provinciaNombre}</Badge>
                 </TableCell>
               </TableRow>
             ))}

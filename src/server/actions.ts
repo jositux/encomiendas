@@ -11,6 +11,14 @@
 
 import { revalidatePath } from "next/cache";
 import * as db from "./db";
+import * as localidadesService from "./services/localidades";
+import * as puntosService from "./services/puntos";
+import * as vehiculosService from "./services/vehiculos";
+import * as recorridosService from "./services/recorridos";
+import * as usuariosService from "./services/usuarios";
+import * as enviosService from "./services/envios";
+import * as clientesService from "./services/clientes";
+import type { CrearEnvioInput } from "./services/envios";
 import type {
   Cliente,
   Encomienda,
@@ -77,58 +85,109 @@ export async function removePersonalAction(id: string) {
 
 // -- Vehículos ------------------------------------------------------------------
 
-export async function createVehiculoAction(data: Omit<Vehiculo, "id">) {
-  const item = await db.createVehiculo(data);
+export async function createVehiculoAction(data: {
+  nombre: string;
+  tipo: string;
+  patente?: string | null;
+}) {
+  const item = await vehiculosService.createVehiculo(data);
   revalidateAll();
   return item;
 }
-export async function updateVehiculoAction(id: string, patch: Partial<Vehiculo>) {
-  await db.updateVehiculo(id, patch);
+export async function updateVehiculoAction(
+  id: string,
+  patch: { nombre?: string; tipo?: string; patente?: string | null; activo?: boolean }
+) {
+  const item = await vehiculosService.updateVehiculo(id, patch);
   revalidateAll();
+  return item;
 }
 export async function removeVehiculoAction(id: string) {
-  await db.removeVehiculo(id);
+  await vehiculosService.updateVehiculo(id, { activo: false });
   revalidateAll();
+}
+
+export async function listUsuariosAction() {
+  return usuariosService.listUsuarios();
 }
 
 // -- Sucursales -----------------------------------------------------------------
 
-export async function updateSucursalAction(id: string, patch: Partial<Sucursal>) {
-  await db.updateSucursal(id, patch);
+export async function updateSucursalAction(
+  id: string,
+  patch: { nombre?: string; localidadId?: string; tipo?: "base" | "deposito"; activo?: boolean }
+) {
+  const item = await puntosService.updatePunto(id, patch);
   revalidateAll();
+  return item;
 }
-export async function createSucursalAction(data: Omit<Sucursal, "id">) {
-  const item = await db.createSucursal(data);
+export async function createSucursalAction(data: {
+  nombre: string;
+  localidadId: string;
+  tipo: "base" | "deposito";
+}) {
+  const item = await puntosService.createPunto(data);
   revalidateAll();
   return item;
 }
 
 // -- Localidades ----------------------------------------------------------------
 
-export async function updateLocalidadAction(id: string, patch: Partial<Localidad>) {
-  await db.updateLocalidad(id, patch);
+export async function updateLocalidadAction(
+  id: string,
+  patch: { nombre?: string; provinciaId?: string }
+) {
+  const item = await localidadesService.updateLocalidad(id, patch);
   revalidateAll();
+  return item;
 }
-export async function createLocalidadAction(data: Omit<Localidad, "id">) {
-  const item = await db.createLocalidad(data);
+export async function createLocalidadAction(data: { nombre: string; provinciaId: string }) {
+  const item = await localidadesService.createLocalidad(data);
   revalidateAll();
   return item;
 }
 
 // -- Rutas ------------------------------------------------------------------------
 
-export async function createRutaAction(data: Omit<GrupoRuta, "id">) {
-  const item = await db.createRuta(data);
+export async function createRutaAction(data: { nombre: string; baseId: string }) {
+  const item = await recorridosService.createRecorrido(data);
   revalidateAll();
   return item;
 }
-export async function updateRutaAction(id: string, patch: Partial<GrupoRuta>) {
-  await db.updateRuta(id, patch);
+export async function updateRutaAction(
+  id: string,
+  patch: {
+    nombre?: string;
+    baseId?: string;
+    choferPredeterminadoId?: string | null;
+    vehiculoPredeterminadoId?: string | null;
+    horaCorte?: string | null;
+    activo?: boolean;
+  }
+) {
+  const item = await recorridosService.updateRecorrido(id, patch);
   revalidateAll();
+  return item;
 }
 export async function removeRutaAction(id: string) {
-  await db.removeRuta(id);
+  await recorridosService.removeRecorrido(id);
   revalidateAll();
+}
+export async function setLocalidadesRutaAction(id: string, localidadIds: string[]) {
+  await recorridosService.setLocalidadesRecorrido(id, localidadIds);
+  revalidateAll();
+}
+
+// -- Envios (Nueva Encomienda, API real) -------------------------------------------
+
+export async function crearEnvioAction(data: CrearEnvioInput) {
+  const item = await enviosService.crearEnvio(data);
+  revalidateAll();
+  return item;
+}
+
+export async function searchClientesAction(q: string) {
+  return clientesService.searchClientes(q);
 }
 
 // -- Cajas --------------------------------------------------------------------------

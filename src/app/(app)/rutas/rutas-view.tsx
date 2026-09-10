@@ -18,23 +18,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createRutaAction, removeRutaAction, updateRutaAction } from "@/server/actions";
-import { sucursalNombre } from "@/lib/mock/sucursales";
-import { localidadNombre } from "@/lib/mock/localidades";
-import { personalNombre } from "@/lib/mock/personal";
+import {
+  createRutaAction,
+  removeRutaAction,
+  updateRutaAction,
+  setLocalidadesRutaAction,
+} from "@/server/actions";
 import { cn } from "@/lib/utils";
-import type { GrupoRuta, Sucursal, Localidad, Personal } from "@/types";
+import type { RecorridoBackend, PuntoBackend, LocalidadBackend } from "@/types";
+import type { UsuarioApi } from "@/server/services/usuarios";
+import type { VehiculoBackend } from "@/types";
 
 export function RutasView({
   rutas,
-  sucursales,
+  bases,
   localidades,
-  personal,
+  usuarios,
+  vehiculos,
 }: {
-  rutas: GrupoRuta[];
-  sucursales: Sucursal[];
-  localidades: Localidad[];
-  personal: Personal[];
+  rutas: RecorridoBackend[];
+  bases: PuntoBackend[];
+  localidades: LocalidadBackend[];
+  usuarios: UsuarioApi[];
+  vehiculos: VehiculoBackend[];
 }) {
   const [selectedId, setSelectedId] = React.useState<string | null>(rutas[0]?.id ?? null);
   const [nuevoNombre, setNuevoNombre] = React.useState("");
@@ -42,29 +48,27 @@ export function RutasView({
   const selected = rutas.find((r) => r.id === selectedId) ?? null;
 
   async function handleCreate() {
-    if (!nuevoNombre.trim()) return;
+    if (!nuevoNombre.trim() || !bases[0]) return;
     const created = await createRutaAction({
       nombre: nuevoNombre.trim(),
-      sucursalProcesaId: sucursales[0].id,
-      localidadIds: [],
-      activo: true,
+      baseId: bases[0].id,
     });
     setNuevoNombre("");
     setSelectedId(created.id);
-    toast.success("Grupo de ruta creado");
+    toast.success("Recorrido creado");
   }
 
   return (
     <div>
       <PageHeader
         title="Grupos de ruta"
-        description="Rutas de reparto, sucursal que procesa y localidades cubiertas."
+        description="Recorridos, base que procesa y localidades cubiertas."
       />
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
         <Card className="gap-0 py-0">
           <CardHeader className="border-b py-3">
-            <CardTitle className="text-sm">Nombre del nuevo grupo</CardTitle>
+            <CardTitle className="text-sm">Nombre del nuevo recorrido</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2 border-b py-3">
             <Input
@@ -91,7 +95,7 @@ export function RutasView({
                   <RouteIcon className="size-3.5 text-muted-foreground" />
                   {r.nombre}
                 </span>
-                <Badge variant="outline">{sucursalNombre(r.sucursalProcesaId)}</Badge>
+                <Badge variant="outline">{r.baseNombre}</Badge>
               </button>
             ))}
           </div>
@@ -108,23 +112,23 @@ export function RutasView({
               <EmptyState
                 icon={RouteIcon}
                 title="Sin selección"
-                description="Elegí un grupo de ruta de la lista para editar su sucursal, chofer y localidades."
+                description="Elegí un grupo de ruta de la lista para editar su base, chofer y localidades."
               />
             ) : (
               <>
                 <div className="grid gap-1.5">
-                  <label className="text-xs text-muted-foreground">Sucursal que procesa</label>
+                  <label className="text-xs text-muted-foreground">Base que procesa</label>
                   <Select
-                    value={selected.sucursalProcesaId}
-                    onValueChange={(v) => updateRutaAction(selected.id, { sucursalProcesaId: v })}
+                    value={selected.baseId}
+                    onValueChange={(v) => updateRutaAction(selected.id, { baseId: v })}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {sucursales.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.nombre}
+                      {bases.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.nombre}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -132,11 +136,13 @@ export function RutasView({
                 </div>
 
                 <div className="grid gap-1.5">
-                  <label className="text-xs text-muted-foreground">Chofer</label>
+                  <label className="text-xs text-muted-foreground">Chofer predeterminado</label>
                   <Select
-                    value={selected.choferId ?? "none"}
+                    value={selected.choferPredeterminadoId ?? "none"}
                     onValueChange={(v) =>
-                      updateRutaAction(selected.id, { choferId: v === "none" ? undefined : v })
+                      updateRutaAction(selected.id, {
+                        choferPredeterminadoId: v === "none" ? null : v,
+                      })
                     }
                   >
                     <SelectTrigger className="w-full">
@@ -144,18 +150,52 @@ export function RutasView({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Sin asignar</SelectItem>
-                      {personal.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.apellidoNombre}
+                      {usuarios.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.nombre}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {selected.choferId && (
-                    <p className="text-xs text-muted-foreground">
-                      Actual: {personalNombre(selected.choferId)}
-                    </p>
-                  )}
+                </div>
+
+                <div className="grid gap-1.5">
+                  <label className="text-xs text-muted-foreground">Vehículo predeterminado</label>
+                  <Select
+                    value={selected.vehiculoPredeterminadoId ?? "none"}
+                    onValueChange={(v) =>
+                      updateRutaAction(selected.id, {
+                        vehiculoPredeterminadoId: v === "none" ? null : v,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Sin asignar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin asignar</SelectItem>
+                      {vehiculos.map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.nombre}
+                          {v.patente ? ` (${v.patente})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <label className="text-xs text-muted-foreground">
+                    Hora de corte (respaldo automático)
+                  </label>
+                  <Input
+                    type="time"
+                    defaultValue={selected.horaCorte ?? ""}
+                    className="h-8 w-32"
+                    onBlur={(e) =>
+                      updateRutaAction(selected.id, { horaCorte: e.target.value || null })
+                    }
+                  />
                 </div>
 
                 <div>
@@ -173,12 +213,12 @@ export function RutasView({
                               const next = v
                                 ? [...selected.localidadIds, l.id]
                                 : selected.localidadIds.filter((id) => id !== l.id);
-                              updateRutaAction(selected.id, { localidadIds: next });
+                              setLocalidadesRutaAction(selected.id, next);
                             }}
                           />
                           <span className="flex items-center gap-1 truncate">
                             <MapPin className="size-3 shrink-0 text-muted-foreground" />
-                            {localidadNombre(l.id)}
+                            {l.nombre}
                           </span>
                         </label>
                       );

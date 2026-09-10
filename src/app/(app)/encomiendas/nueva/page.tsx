@@ -1,12 +1,22 @@
-import { getClientes, getEncomiendas } from "@/server/db";
+import { listLocalidades } from "@/server/services/localidades";
+import { listSectores } from "@/server/services/sectores";
+import { listEnvios } from "@/server/services/envios";
 import { getSession } from "@/server/session";
 import { NuevaEncomiendaView } from "./nueva-view";
 
 export default async function NuevaEncomiendaPage() {
-  const [encomiendas, clientes, session] = await Promise.all([
-    getEncomiendas(),
-    getClientes(),
+  const [localidades, sectores, envios, session] = await Promise.all([
+    listLocalidades(),
+    listSectores(),
+    listEnvios({ limite: 50 }),
     getSession(),
   ]);
-  return <NuevaEncomiendaView encomiendas={encomiendas} clientes={clientes} session={session} />;
+  return (
+    <NuevaEncomiendaView
+      localidades={localidades}
+      sectores={sectores}
+      envios={envios}
+      session={session}
+    />
+  );
 }

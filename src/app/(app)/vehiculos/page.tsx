@@ -1,7 +1,7 @@
-import { getVehiculos, getPersonal } from "@/server/db";
+import { listVehiculos } from "@/server/services/vehiculos";
 import { VehiculosView } from "./vehiculos-view";
 
 export default async function VehiculosPage() {
-  const [vehiculos, personal] = await Promise.all([getVehiculos(), getPersonal()]);
-  return <VehiculosView vehiculos={vehiculos} personal={personal} />;
+  const vehiculos = await listVehiculos();
+  return <VehiculosView vehiculos={vehiculos} />;
 }

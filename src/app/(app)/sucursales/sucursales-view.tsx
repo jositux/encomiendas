@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -33,33 +34,40 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createSucursalAction, updateSucursalAction } from "@/server/actions";
-import type { Provincia, Sucursal } from "@/types";
+import type { PuntoBackend, LocalidadBackend } from "@/types";
 
-export function SucursalesView({ sucursales }: { sucursales: Sucursal[] }) {
+const TIPO_LABEL: Record<PuntoBackend["tipo"], string> = {
+  base: "Base",
+  deposito: "Depósito",
+};
+
+export function SucursalesView({
+  sucursales,
+  localidades,
+}: {
+  sucursales: PuntoBackend[];
+  localidades: LocalidadBackend[];
+}) {
   const [open, setOpen] = React.useState(false);
   const [nombre, setNombre] = React.useState("");
-  const [codigo, setCodigo] = React.useState("");
-  const [provincia, setProvincia] = React.useState<Provincia>("MISIONES");
+  const [localidadId, setLocalidadId] = React.useState(localidades[0]?.id ?? "");
+  const [tipo, setTipo] = React.useState<PuntoBackend["tipo"]>("base");
   const [submitting, setSubmitting] = React.useState(false);
 
   async function handleCreate() {
-    if (!nombre.trim() || !codigo.trim()) {
-      toast.error("Completá nombre y código.");
+    if (!nombre.trim()) {
+      toast.error("Ingresá el nombre.");
+      return;
+    }
+    if (!localidadId) {
+      toast.error("Elegí una localidad.");
       return;
     }
     setSubmitting(true);
     try {
-      await createSucursalAction({
-        nombre,
-        codigo,
-        participaCorte: false,
-        procesarHastaHora: 0,
-        color: "#94a3b8",
-        provincia,
-      });
+      await createSucursalAction({ nombre, localidadId, tipo });
       toast.success("Sucursal creada");
       setNombre("");
-      setCodigo("");
       setOpen(false);
     } finally {
       setSubmitting(false);
@@ -88,19 +96,29 @@ export function SucursalesView({ sucursales }: { sucursales: Sucursal[] }) {
                   <Input value={nombre} onChange={(e) => setNombre(e.target.value)} />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label>Código</Label>
-                  <Input value={codigo} onChange={(e) => setCodigo(e.target.value)} />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>Provincia</Label>
-                  <Select value={provincia} onValueChange={(v) => setProvincia(v as Provincia)}>
+                  <Label>Localidad</Label>
+                  <Select value={localidadId} onValueChange={setLocalidadId}>
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="MISIONES">Misiones</SelectItem>
-                      <SelectItem value="CORRIENTES">Corrientes</SelectItem>
-                      <SelectItem value="CHACO">Chaco</SelectItem>
+                      {localidades.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Tipo</Label>
+                  <Select value={tipo} onValueChange={(v) => setTipo(v as PuntoBackend["tipo"])}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="base">Base</SelectItem>
+                      <SelectItem value="deposito">Depósito</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -122,24 +140,15 @@ export function SucursalesView({ sucursales }: { sucursales: Sucursal[] }) {
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Color</TableHead>
               <TableHead>Nombre</TableHead>
-              <TableHead>Código</TableHead>
-              <TableHead>Participa del corte</TableHead>
-              <TableHead>Procesar hasta las</TableHead>
+              <TableHead>Localidad</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead>Activa</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {sucursales.map((s) => (
               <TableRow key={s.id}>
-                <TableCell>
-                  <input
-                    type="color"
-                    value={s.color}
-                    onChange={(e) => updateSucursalAction(s.id, { color: e.target.value })}
-                    className="size-7 cursor-pointer rounded border p-0.5"
-                  />
-                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Building2 className="size-3.5 text-muted-foreground" />
@@ -151,27 +160,18 @@ export function SucursalesView({ sucursales }: { sucursales: Sucursal[] }) {
                         updateSucursalAction(s.id, { nombre: e.target.value })
                       }
                     />
+                    {s.esCasaCentral && <Badge variant="outline">Casa central</Badge>}
+                    {s.esDepositoCentral && <Badge variant="outline">Depósito central</Badge>}
                   </div>
                 </TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {s.codigo}
+                <TableCell className="text-muted-foreground">{s.localidadNombre}</TableCell>
+                <TableCell>
+                  <Badge variant="outline">{TIPO_LABEL[s.tipo]}</Badge>
                 </TableCell>
                 <TableCell>
                   <Switch
-                    checked={s.participaCorte}
-                    onCheckedChange={(v) => updateSucursalAction(s.id, { participaCorte: v })}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={23}
-                    defaultValue={s.procesarHastaHora}
-                    className="h-8 w-20"
-                    onBlur={(e) =>
-                      updateSucursalAction(s.id, { procesarHastaHora: Number(e.target.value) || 0 })
-                    }
+                    checked={s.activo}
+                    onCheckedChange={(v) => updateSucursalAction(s.id, { activo: v })}
                   />
                 </TableCell>
               </TableRow>
