@@ -26,7 +26,7 @@ export function SidebarContent({
         )}
       >
         <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-          <Package className="size-4" />
+          <Package className="size-4.5" />
         </div>
         {!collapsed && (
           <div className="leading-tight">
@@ -39,7 +39,7 @@ export function SidebarContent({
       </div>
 
       <ScrollArea className="flex-1 px-3 py-3">
-        <nav className="flex flex-col gap-4">
+        <nav className="flex flex-col gap-3">
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="flex flex-col gap-1">
               {!collapsed && (

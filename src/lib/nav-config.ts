@@ -18,7 +18,6 @@ import {
   Route,
   MapPin,
   CreditCard,
-  FileSpreadsheet,
 } from "lucide-react";
 
 export interface NavItem {
@@ -122,7 +121,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Administración",
+    label: "Clientes y personal",
     items: [
       {
         title: "Clientes",
@@ -136,6 +135,11 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: UserRound,
         description: "Empleados, roles y permisos",
       },
+    ],
+  },
+  {
+    label: "Catálogos",
+    items: [
       {
         title: "Vehículos",
         href: "/vehiculos",
@@ -159,12 +163,6 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/localidades",
         icon: MapPin,
         description: "Pueblos y ciudades de cobertura",
-      },
-      {
-        title: "Exportar a Excel",
-        href: "/encomiendas/activas?export=1",
-        icon: FileSpreadsheet,
-        description: "Exportar reportes de encomiendas",
       },
     ],
   },
