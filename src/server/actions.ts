@@ -20,7 +20,6 @@ import * as enviosService from "./services/envios";
 import * as clientesService from "./services/clientes";
 import type { CrearEnvioInput } from "./services/envios";
 import type {
-  Cliente,
   Encomienda,
   GrupoRuta,
   Localidad,
@@ -53,18 +52,22 @@ export async function removeEncomiendaAction(id: string) {
 
 // -- Clientes -------------------------------------------------------------------
 
-export async function createClienteAction(data: Omit<Cliente, "id" | "createdAt">) {
-  const item = await db.createCliente(data);
+// No hay updateClienteAction: el backend real sigue sin PATCH/PUT
+// /clientes/{id} (edicion), solo alta (POST), listado/busqueda (GET) y baja
+// por soft-delete (DELETE, agregada despues — ver removeClienteAction mas
+// abajo). Ver el comentario completo en src/server/services/clientes.ts.
+export async function createClienteAction(data: {
+  tipo: "persona" | "empresa";
+  nombre: string;
+  telefono: string;
+  documento?: string;
+  email?: string;
+  esCuentaCorriente?: boolean;
+  domicilios: Parameters<typeof clientesService.createCliente>[0]["domicilios"];
+}) {
+  const item = await clientesService.createCliente(data);
   revalidateAll();
   return item;
-}
-export async function updateClienteAction(id: string, patch: Partial<Cliente>) {
-  await db.updateCliente(id, patch);
-  revalidateAll();
-}
-export async function removeClienteAction(id: string) {
-  await db.removeCliente(id);
-  revalidateAll();
 }
 
 // -- Personal -------------------------------------------------------------------
@@ -181,13 +184,32 @@ export async function setLocalidadesRutaAction(id: string, localidadIds: string[
 // -- Envios (Nueva Encomienda, API real) -------------------------------------------
 
 export async function crearEnvioAction(data: CrearEnvioInput) {
-  const item = await enviosService.crearEnvio(data);
+  // Si el remitente no vino de ClienteQuickPick (sin clienteId), tratamos de
+  // asociarlo a un Cliente real (o crear uno nuevo) para que la base de
+  // clientes se complete sola. Mejor esfuerzo: si falla, seguimos con el
+  // remitente como value object suelto, como antes. Ver
+  // ensureClienteRemitente en services/clientes.ts.
+  let remitente = data.remitente;
+  if (!remitente.clienteId && remitente.nombre.trim()) {
+    const clienteId = await clientesService.ensureClienteRemitente(
+      remitente.nombre,
+      remitente.telefono
+    );
+    if (clienteId) remitente = { ...remitente, clienteId };
+  }
+
+  const item = await enviosService.crearEnvio({ ...data, remitente });
   revalidateAll();
   return item;
 }
 
 export async function searchClientesAction(q: string) {
   return clientesService.searchClientes(q);
+}
+
+export async function removeClienteAction(id: string) {
+  await clientesService.removeCliente(id);
+  revalidateAll();
 }
 
 // -- Cajas --------------------------------------------------------------------------

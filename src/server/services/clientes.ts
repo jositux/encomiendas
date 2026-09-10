@@ -2,6 +2,8 @@ import "server-only";
 
 import { apiFetch } from "../api-client";
 import { requireToken } from "./shared";
+import { listLocalidades } from "./localidades";
+import { listSectores } from "./sectores";
 
 // El backend real modela cliente + domicilio(s) como entidades propias
 // (POST /clientes exige tipo/nombre/telefono/domicilios[]), muy distinto del
@@ -9,6 +11,17 @@ import { requireToken } from "./shared";
 // hace falta tener un Cliente real: remitente/destinatario del envio son
 // value objects sueltos (ver envios.ts) — el cliente es solo un atajo
 // opcional para autocompletar datos repetidos.
+//
+// Confirmado en vivo (GET /clientes sin `q`, 2026-09-10): la respuesta cruda
+// es exactamente este shape, sin campos extra.
+//
+// Confirmado en vivo el 2026-09-10: en ese momento el backend etapa 1 SOLO
+// tenia POST /clientes (crear) y GET /clientes (leer/buscar) — PATCH/PUT/
+// DELETE devolvian el error de ruteo de Nest "Cannot <VERBO> /clientes/{id}".
+// El backend agrego despues DELETE /clientes/{id} como soft-delete (marca el
+// cliente como eliminado/inactivo del lado del servidor en vez de borrar la
+// fila; GET /clientes ya no lo devuelve). No hay PATCH/PUT — sigue sin existir
+// edicion, solo alta + listado + baja.
 export interface DomicilioApi {
   id: string;
   localidadId: string;
@@ -29,6 +42,9 @@ export interface ClienteApi {
   documento: string | null;
   email: string | null;
   esCuentaCorriente: boolean;
+  // Agregado por el backend junto con el soft-delete (no estaba el
+  // 2026-09-10 original). GET /clientes ya no devuelve los inactivos.
+  activo: boolean;
   domicilios: DomicilioApi[];
 }
 
@@ -40,6 +56,14 @@ export async function searchClientes(q: string): Promise<ClienteApi[]> {
   const token = await requireToken();
   const params = new URLSearchParams({ q: query, limite: "8" });
   return apiFetch<ClienteApi[]>(`/clientes?${params.toString()}`, { token });
+}
+
+// GET /clientes sin `q` devuelve el listado completo (confirmado en vivo) —
+// lo usa la pantalla de administracion de Clientes, a diferencia de
+// searchClientes (con `q`, para el buscador rapido de Nueva Encomienda).
+export async function listClientes(): Promise<ClienteApi[]> {
+  const token = await requireToken();
+  return apiFetch<ClienteApi[]>("/clientes?limite=200", { token });
 }
 
 export interface DomicilioInput {
@@ -56,8 +80,85 @@ export async function createCliente(data: {
   nombre: string;
   telefono: string;
   documento?: string;
+  email?: string;
+  esCuentaCorriente?: boolean;
   domicilios: DomicilioInput[];
 }): Promise<ClienteApi> {
   const token = await requireToken();
   return apiFetch<ClienteApi>("/clientes", { method: "POST", token, body: data });
 }
+
+// Baja (soft-delete): el backend marca el cliente como eliminado, no lo
+// borra de la base. GET /clientes deja de devolverlo despues de esto.
+export async function removeCliente(id: string): Promise<void> {
+  const token = await requireToken();
+  await apiFetch<void>(`/clientes/${id}`, { method: "DELETE", token });
+}
+
+// Atajo para Nueva Encomienda: cuando el remitente no vino de
+// ClienteQuickPick (el usuario tipeo nombre/telefono a mano), tratamos de
+// asociarlo a un Cliente real en vez de dejarlo como value object suelto —
+// asi la base de clientes se completa sola con los remitentes que se repiten,
+// sin que el usuario tenga que abrir la pantalla de Clientes aparte.
+//
+// Es "mejor esfuerzo": si algo falla, no tiramos error — el envio sigue su
+// curso con el remitente como value object, igual que antes de que existiera
+// este mecanismo. Requiere nombre Y telefono (el backend exige
+// `telefono` no vacio, y sin telefono tampoco podemos buscar una
+// coincidencia exacta con confianza).
+//
+// Para no duplicar: primero buscamos por nombre+telefono exacto entre los
+// resultados de searchClientes (mismo endpoint que ClienteQuickPick).
+//
+// Domicilio placeholder: confirmado en vivo (2026-09-10) que POST /clientes
+// exige `domicilios` con al menos 1 elemento ("domicilios must contain at
+// least 1 elements") — el formulario de origen de Nueva Encomienda no pide
+// domicilio del remitente, y no queremos inventar una direccion real (le
+// asignaria al cliente un domicilio falso). Como resolucion practica,
+// creamos un domicilio placeholder explicito — localidad/sector por defecto
+// (el primero que tenga sectores) y `calle` con un texto que deja claro que
+// falta completarlo — en vez de no crear el cliente. Queda visible así en la
+// pantalla de Clientes para quien lo quiera corregir mas adelante (todavia
+// no hay edicion de cliente, asi que por ahora solo queda documentado).
+export async function ensureClienteRemitente(
+  nombre: string,
+  telefono: string
+): Promise<string | undefined> {
+  const nombreTrim = nombre.trim();
+  const telefonoTrim = telefono.trim();
+  if (!nombreTrim || !telefonoTrim) return undefined;
+
+  try {
+    const candidatos = await searchClientes(nombreTrim);
+    const exacto = candidatos.find(
+      (c) =>
+        c.nombre.trim().toLowerCase() === nombreTrim.toLowerCase() &&
+        c.telefono.trim() === telefonoTrim
+    );
+    if (exacto) return exacto.id;
+
+    const [localidades, sectores] = await Promise.all([listLocalidades(), listSectores()]);
+    const localidadId =
+      localidades.find((l) => sectores.some((s) => s.localidadId === l.id))?.id ??
+      localidades[0]?.id;
+    const sectorId = sectores.find((s) => s.localidadId === localidadId)?.id;
+    if (!localidadId || !sectorId) return undefined;
+
+    const nuevo = await createCliente({
+      tipo: "persona",
+      nombre: nombreTrim,
+      telefono: telefonoTrim,
+      domicilios: [
+        {
+          localidadId,
+          sectorId,
+          calle: "Sin domicilio (completar) — cargado desde Nueva Encomienda",
+        },
+      ],
+    });
+    return nuevo.id;
+  } catch {
+    return undefined;
+  }
+}
+

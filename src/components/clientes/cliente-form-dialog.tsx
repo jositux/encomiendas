@@ -17,51 +17,96 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ProvinciaLocalidadSelect } from "@/components/shared/provincia-localidad-select";
-import { createClienteAction, updateClienteAction } from "@/server/actions";
-import type { Cliente, Provincia } from "@/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { LocalidadSectorSelect } from "@/components/shared/localidad-sector-select";
+import { createClienteAction } from "@/server/actions";
+import type { LocalidadBackend } from "@/types";
+import type { SectorApi } from "@/server/services/sectores";
 
-type Draft = Omit<Cliente, "id" | "createdAt">;
+// El backend real no tiene un solo domicilio-string por cliente: tiene
+// domicilios[] (localidadId + sectorId, mismo modelo de ruteo que
+// Recorridos/Nueva Encomienda) y separa tipo persona/empresa, documento y
+// cuenta corriente como campos propios del cliente. Este formulario pide UN
+// domicilio al crear (el `esPredeterminado`) — soporte para más de un
+// domicilio por cliente queda para una mejora futura si se necesita.
+//
+// Solo alta: confirmado en vivo (2026-09-10) que el backend real no tiene
+// PATCH/PUT/DELETE /clientes/{id} — los tres devuelven el error de ruteo de
+// Nest "Cannot <VERBO> /clientes/{id}", no un error de validación (ver el
+// comentario completo en src/server/services/clientes.ts). Por eso este
+// diálogo no tiene modo edición: solo crea clientes nuevos, hasta que el
+// backend agregue esos endpoints.
+type Draft = {
+  tipo: "persona" | "empresa";
+  nombre: string;
+  telefono: string;
+  documento: string;
+  email: string;
+  esCuentaCorriente: boolean;
+  calle: string;
+  numero: string;
+  piso: string;
+  referencia: string;
+  localidadId: string;
+  sectorId: string;
+};
 
-function emptyDraft(): Draft {
+function emptyDraft(localidades: LocalidadBackend[], sectores: SectorApi[]): Draft {
+  const primeraLocalidad = localidades.find((l) => sectores.some((s) => s.localidadId === l.id))?.id
+    ?? localidades[0]?.id
+    ?? "";
+  const primerSector = sectores.find((s) => s.localidadId === primeraLocalidad)?.id ?? "";
   return {
-    dniCuit: "",
+    tipo: "persona",
     nombre: "",
     telefono: "",
-    esCelular: true,
-    domicilio: "",
-    localidadId: "mis-obera",
-    provincia: "MISIONES",
-    fechaNacimiento: undefined,
-    ctaCte: false,
-    codCtaCte: undefined,
+    documento: "",
+    email: "",
+    esCuentaCorriente: false,
+    calle: "",
+    numero: "",
+    piso: "",
+    referencia: "",
+    localidadId: primeraLocalidad,
+    sectorId: primerSector,
   };
 }
 
 export function ClienteFormDialog({
-  cliente,
+  localidades,
+  sectores,
   trigger,
 }: {
-  cliente?: Cliente;
+  localidades: LocalidadBackend[];
+  sectores: SectorApi[];
   trigger?: React.ReactNode;
 }) {
   const [open, setOpenState] = React.useState(false);
-  const [draft, setDraft] = React.useState<Draft>(cliente ?? emptyDraft());
+  const [draft, setDraft] = React.useState<Draft>(emptyDraft(localidades, sectores));
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [submitting, setSubmitting] = React.useState(false);
 
-  // Reset the draft the moment the dialog is asked to open, rather than in a
-  // useEffect keyed on `open` — that would fire an extra render every time.
   function setOpen(next: boolean) {
-    if (next) setDraft(cliente ?? emptyDraft());
+    if (next) {
+      setDraft(emptyDraft(localidades, sectores));
+      setErrors({});
+    }
     setOpenState(next);
   }
 
   function validate() {
     const next: Record<string, string> = {};
     if (!draft.nombre.trim()) next.nombre = "Ingresá el nombre.";
-    if (!draft.dniCuit.trim()) next.dniCuit = "Ingresá el DNI o CUIT.";
-    if (!draft.domicilio.trim()) next.domicilio = "Ingresá el domicilio.";
+    if (!draft.telefono.trim()) next.telefono = "Ingresá el teléfono.";
+    if (!draft.calle.trim()) next.calle = "Ingresá la calle.";
+    if (!draft.localidadId) next.localidadId = "Elegí una localidad.";
+    if (!draft.sectorId) next.sectorId = "Elegí un sector.";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -72,14 +117,28 @@ export function ClienteFormDialog({
 
     setSubmitting(true);
     try {
-      if (cliente) {
-        await updateClienteAction(cliente.id, draft);
-        toast.success("Cliente actualizado");
-      } else {
-        await createClienteAction(draft);
-        toast.success("Cliente creado");
-      }
+      await createClienteAction({
+        tipo: draft.tipo,
+        nombre: draft.nombre.trim(),
+        telefono: draft.telefono.trim(),
+        documento: draft.documento.trim() || undefined,
+        email: draft.email.trim() || undefined,
+        esCuentaCorriente: draft.esCuentaCorriente,
+        domicilios: [
+          {
+            localidadId: draft.localidadId,
+            sectorId: draft.sectorId,
+            calle: draft.calle.trim(),
+            numero: draft.numero.trim() || undefined,
+            piso: draft.piso.trim() || undefined,
+            referencia: draft.referencia.trim() || undefined,
+          },
+        ],
+      });
+      toast.success("Cliente creado");
       setOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo guardar el cliente.");
     } finally {
       setSubmitting(false);
     }
@@ -96,15 +155,15 @@ export function ClienteFormDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{cliente ? "Editar cliente" : "Nuevo cliente"}</DialogTitle>
+          <DialogTitle>Nuevo cliente</DialogTitle>
           <DialogDescription>
-            Datos de contacto y ubicación para asociar a sus encomiendas.
+            Datos de contacto para asociar a sus encomiendas.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label htmlFor="nombre">Apellido y nombres</Label>
+              <Label htmlFor="nombre">{draft.tipo === "empresa" ? "Razón social" : "Apellido y nombres"}</Label>
               <Input
                 id="nombre"
                 value={draft.nombre}
@@ -114,14 +173,19 @@ export function ClienteFormDialog({
               {errors.nombre && <p className="text-xs text-destructive">{errors.nombre}</p>}
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="dni">DNI / CUIT</Label>
-              <Input
-                id="dni"
-                value={draft.dniCuit}
-                onChange={(e) => setDraft({ ...draft, dniCuit: e.target.value })}
-                aria-invalid={!!errors.dniCuit}
-              />
-              {errors.dniCuit && <p className="text-xs text-destructive">{errors.dniCuit}</p>}
+              <Label htmlFor="tipo">Tipo</Label>
+              <Select
+                value={draft.tipo}
+                onValueChange={(v: "persona" | "empresa") => setDraft({ ...draft, tipo: v })}
+              >
+                <SelectTrigger id="tipo" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="persona">Persona</SelectItem>
+                  <SelectItem value="empresa">Empresa</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -132,75 +196,96 @@ export function ClienteFormDialog({
                 id="telefono"
                 value={draft.telefono}
                 onChange={(e) => setDraft({ ...draft, telefono: e.target.value })}
+                aria-invalid={!!errors.telefono}
               />
+              {errors.telefono && <p className="text-xs text-destructive">{errors.telefono}</p>}
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="nacimiento">Fecha de nacimiento</Label>
+              <Label htmlFor="documento">DNI / CUIT (opcional)</Label>
               <Input
-                id="nacimiento"
-                type="date"
-                value={draft.fechaNacimiento ?? ""}
-                onChange={(e) => setDraft({ ...draft, fechaNacimiento: e.target.value || undefined })}
+                id="documento"
+                value={draft.documento}
+                onChange={(e) => setDraft({ ...draft, documento: e.target.value })}
               />
             </div>
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="domicilio">Domicilio</Label>
+            <Label htmlFor="email">Email (opcional)</Label>
             <Input
-              id="domicilio"
-              value={draft.domicilio}
-              onChange={(e) => setDraft({ ...draft, domicilio: e.target.value })}
-              aria-invalid={!!errors.domicilio}
+              id="email"
+              type="email"
+              value={draft.email}
+              onChange={(e) => setDraft({ ...draft, email: e.target.value })}
             />
-            {errors.domicilio && <p className="text-xs text-destructive">{errors.domicilio}</p>}
           </div>
 
-          <ProvinciaLocalidadSelect
-            idPrefix="cliente"
-            provincia={draft.provincia}
-            localidadId={draft.localidadId}
-            onChangeProvincia={(p: Provincia) => setDraft({ ...draft, provincia: p })}
-            onChangeLocalidad={(id) => setDraft({ ...draft, localidadId: id })}
-          />
-
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={draft.esCelular}
-                onCheckedChange={(v) => setDraft({ ...draft, esCelular: v === true })}
-              />
-              Teléfono celular
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={draft.ctaCte}
-                onCheckedChange={(v) =>
-                  setDraft({
-                    ...draft,
-                    ctaCte: v === true,
-                    codCtaCte: v === true ? draft.codCtaCte ?? `CC-${Date.now().toString().slice(-4)}` : undefined,
-                  })
-                }
-              />
-              Cuenta corriente
-            </label>
-            {draft.ctaCte && (
+          <div className="grid gap-1.5">
+            <Label htmlFor="calle">Calle</Label>
+            <Input
+              id="calle"
+              value={draft.calle}
+              onChange={(e) => setDraft({ ...draft, calle: e.target.value })}
+              aria-invalid={!!errors.calle}
+            />
+            {errors.calle && <p className="text-xs text-destructive">{errors.calle}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="numero">Número</Label>
               <Input
-                className="h-8 w-32"
-                placeholder="Código cta cte"
-                value={draft.codCtaCte ?? ""}
-                onChange={(e) => setDraft({ ...draft, codCtaCte: e.target.value })}
+                id="numero"
+                value={draft.numero}
+                onChange={(e) => setDraft({ ...draft, numero: e.target.value })}
               />
-            )}
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="piso">Piso/Depto</Label>
+              <Input
+                id="piso"
+                value={draft.piso}
+                onChange={(e) => setDraft({ ...draft, piso: e.target.value })}
+              />
+            </div>
           </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="referencia">Referencia</Label>
+            <Input
+              id="referencia"
+              value={draft.referencia}
+              onChange={(e) => setDraft({ ...draft, referencia: e.target.value })}
+            />
+          </div>
+          <LocalidadSectorSelect
+            idPrefix="cliente"
+            localidades={localidades}
+            sectores={sectores}
+            localidadId={draft.localidadId}
+            sectorId={draft.sectorId}
+            onChangeLocalidad={(id) => {
+              const primerSector = sectores.find((s) => s.localidadId === id)?.id ?? "";
+              setDraft({ ...draft, localidadId: id, sectorId: primerSector });
+            }}
+            onChangeSector={(id) => setDraft({ ...draft, sectorId: id })}
+          />
+          {(errors.localidadId || errors.sectorId) && (
+            <p className="text-xs text-destructive">Elegí localidad y sector.</p>
+          )}
+
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={draft.esCuentaCorriente}
+              onCheckedChange={(v) => setDraft({ ...draft, esCuentaCorriente: v === true })}
+            />
+            Cuenta corriente
+          </label>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
             <Button type="submit" disabled={submitting}>
-              {cliente ? "Guardar cambios" : "Crear cliente"}
+              Crear cliente
             </Button>
           </DialogFooter>
         </form>
