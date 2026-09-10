@@ -1,8 +1,9 @@
-import { listPuntos } from "@/server/services/puntos";
-import { listLocalidades } from "@/server/services/localidades";
-import { SucursalesView } from "./sucursales-view";
+import { redirect } from "next/navigation";
 
-export default async function SucursalesPage() {
-  const [sucursales, localidades] = await Promise.all([listPuntos(), listLocalidades()]);
-  return <SucursalesView sucursales={sucursales} localidades={localidades} />;
+// Sucursales se consolidó dentro de "Geografía" (pestaña "Puntos y
+// sucursales"), junto con Provincias, Localidades y Sectores/Zonas. Se deja
+// este redirect en vez de borrar la ruta por si algo todavía apunta al link
+// viejo.
+export default function SucursalesPage() {
+  redirect("/geografia");
 }

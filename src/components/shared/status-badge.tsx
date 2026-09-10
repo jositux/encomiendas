@@ -1,3 +1,6 @@
+import * as React from "react";
+import { Package, Wallet, FileText, Building2 } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { EstadoEncomienda, TipoEncomienda, EstadoCaja } from "@/types";
@@ -36,8 +39,21 @@ const TIPO_VARIANT: Record<TipoEncomienda, "default" | "secondary" | "outline" |
   INTERNO: "info",
 };
 
+export const TIPO_ICON: Record<TipoEncomienda, React.ElementType> = {
+  CRR: Wallet,
+  PAQUETERIA: Package,
+  TRAMITE: FileText,
+  INTERNO: Building2,
+};
+
 export function TipoBadge({ tipo }: { tipo: TipoEncomienda }) {
-  return <Badge variant={TIPO_VARIANT[tipo]}>{TIPO_LABEL[tipo]}</Badge>;
+  const Icon = TIPO_ICON[tipo];
+  return (
+    <Badge variant={TIPO_VARIANT[tipo]}>
+      <Icon className="size-3" />
+      {TIPO_LABEL[tipo]}
+    </Badge>
+  );
 }
 
 const CAJA_VARIANT: Record<EstadoCaja, "outline" | "warning" | "success"> = {

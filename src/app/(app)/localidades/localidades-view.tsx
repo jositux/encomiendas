@@ -36,12 +36,17 @@ import { createLocalidadAction } from "@/server/actions";
 import type { LocalidadBackend } from "@/types";
 import type { ProvinciaApi } from "@/server/services/provincias";
 
+// `embedded` la usa la pestaña "Localidades" de Geografía: mismo componente,
+// sin el título de página propio (Geografía ya tiene el suyo), con el botón
+// de alta en una barra más liviana en vez del PageHeader.
 export function LocalidadesView({
   localidades,
   provincias,
+  embedded = false,
 }: {
   localidades: LocalidadBackend[];
   provincias: ProvinciaApi[];
+  embedded?: boolean;
 }) {
   const [query, setQuery] = React.useState("");
   const [open, setOpen] = React.useState(false);
@@ -76,55 +81,64 @@ export function LocalidadesView({
     }
   }
 
+  const nuevaLocalidadDialog = (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button className="gap-1.5">
+          <Plus className="size-4" /> Nueva localidad
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nueva localidad</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label>Nombre</Label>
+            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Provincia</Label>
+            <Select value={provinciaId} onValueChange={setProvinciaId}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {provincias.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleCreate} disabled={submitting}>
+            Crear
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
     <div>
-      <PageHeader
-        title="Localidades"
-        description={`${localidades.length} localidades de cobertura.`}
-        actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-1.5">
-                <Plus className="size-4" /> Nueva localidad
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Nueva localidad</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4">
-                <div className="grid gap-1.5">
-                  <Label>Nombre</Label>
-                  <Input value={nombre} onChange={(e) => setNombre(e.target.value)} />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>Provincia</Label>
-                  <Select value={provinciaId} onValueChange={setProvinciaId}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {provincias.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.nombre}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleCreate} disabled={submitting}>
-                  Crear
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        }
-      />
+      {embedded ? (
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">{localidades.length} localidades de cobertura.</p>
+          {nuevaLocalidadDialog}
+        </div>
+      ) : (
+        <PageHeader
+          title="Localidades"
+          description={`${localidades.length} localidades de cobertura.`}
+          actions={nuevaLocalidadDialog}
+        />
+      )}
 
       <div className="relative mb-4 max-w-xs">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />

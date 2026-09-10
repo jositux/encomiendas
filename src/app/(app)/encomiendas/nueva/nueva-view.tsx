@@ -17,7 +17,14 @@ import {
 
 import { PageHeader } from "@/components/shared/page-header";
 import { LocalidadSectorSelect } from "@/components/shared/localidad-sector-select";
-import { ClienteQuickPick } from "@/components/shared/cliente-quick-pick";
+import { ClienteSearchInput } from "@/components/shared/cliente-search-input";
+import {
+  bultosSchema,
+  montoNoNegativoSchema,
+  montoPositivoSchema,
+  sanitizeIntegerInput,
+  sanitizeMoneyInput,
+} from "@/lib/validation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -39,7 +46,6 @@ import type {
   LugarPagoApi,
   TipoEnvioApi,
 } from "@/server/services/envios";
-import type { ClienteApi } from "@/server/services/clientes";
 import type { SectorApi } from "@/server/services/sectores";
 import type { LocalidadBackend, SesionUsuario } from "@/types";
 
@@ -179,8 +185,14 @@ function validarFila(f: FilaDestino): Record<string, string> {
   if (!f.destino.calle.trim()) next.calle = "Ingresá la calle de destino.";
   if (!f.destino.localidadId) next.localidad = "Elegí la localidad de destino.";
   if (!f.destino.sectorId) next.sector = "Elegí el sector de destino.";
-  if (f.tipo === "efectivo" && (f.montoCrr === "" || Number(f.montoCrr) <= 0))
-    next.montoCrr = "Ingresá el monto a reembolsar.";
+  const bultosCheck = bultosSchema.safeParse(f.bultos);
+  if (!bultosCheck.success) next.bultos = bultosCheck.error.issues[0].message;
+  const fleteCheck = montoNoNegativoSchema.safeParse(f.flete === "" ? 0 : f.flete);
+  if (!fleteCheck.success) next.flete = fleteCheck.error.issues[0].message;
+  if (f.tipo === "efectivo") {
+    const montoCheck = montoPositivoSchema.safeParse(f.montoCrr === "" ? 0 : f.montoCrr);
+    if (!montoCheck.success) next.montoCrr = montoCheck.error.issues[0].message;
+  }
   return next;
 }
 
@@ -238,8 +250,14 @@ export function NuevaEncomiendaView({
     if (!destino.calle.trim()) next.destinoCalle = "Ingresá la calle de destino.";
     if (!destino.localidadId) next.destinoLocalidad = "Elegí la localidad de destino.";
     if (!destino.sectorId) next.destinoSector = "Elegí el sector de destino.";
-    if (tipo === "efectivo" && (montoCrr === "" || Number(montoCrr) <= 0))
-      next.montoCrr = "Ingresá el monto a reembolsar.";
+    const bultosCheck = bultosSchema.safeParse(bultos);
+    if (!bultosCheck.success) next.bultos = bultosCheck.error.issues[0].message;
+    const fleteCheck = montoNoNegativoSchema.safeParse(flete === "" ? 0 : flete);
+    if (!fleteCheck.success) next.flete = fleteCheck.error.issues[0].message;
+    if (tipo === "efectivo") {
+      const montoCheck = montoPositivoSchema.safeParse(montoCrr === "" ? 0 : montoCrr);
+      if (!montoCheck.success) next.montoCrr = montoCheck.error.issues[0].message;
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -443,29 +461,24 @@ export function NuevaEncomiendaView({
             <Card>
               <CardContent className="flex flex-col gap-6">
                 <div>
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="flex items-center gap-2 text-sm font-semibold">
-                      <PackagePlus className="size-4" />
-                      Datos de origen
-                    </p>
-                    <ClienteQuickPick
-                      onSelect={(c: ClienteApi) =>
-                        setOrigen({ nombre: c.nombre, telefono: c.telefono, clienteId: c.id })
-                      }
-                    />
-                  </div>
+                  <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                    <PackagePlus className="size-4" />
+                    Datos de origen
+                  </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="grid gap-1.5">
                       <Label htmlFor="origen-nombre" className="text-xs text-muted-foreground">
-                        Remitente
+                        Origen
                       </Label>
-                      <Input
+                      <ClienteSearchInput
                         id="origen-nombre"
                         value={origen.nombre}
-                        onChange={(e) =>
-                          setOrigen({ ...origen, nombre: e.target.value, clienteId: undefined })
+                        onChange={(v) => setOrigen({ ...origen, nombre: v, clienteId: undefined })}
+                        onSelectCliente={(c) =>
+                          setOrigen({ nombre: c.nombre, telefono: c.telefono, clienteId: c.id })
                         }
-                        aria-invalid={!!errors.origenNombre}
+                        placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                        ariaInvalid={!!errors.origenNombre}
                       />
                       {errors.origenNombre && (
                         <p className="text-xs text-destructive">{errors.origenNombre}</p>
@@ -487,47 +500,44 @@ export function NuevaEncomiendaView({
                 <Separator />
 
                 <div>
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="flex items-center gap-2 text-sm font-semibold">
-                      <Truck className="size-4" />
-                      Datos de destino
-                    </p>
-                    <ClienteQuickPick
-                      onSelect={(c: ClienteApi) => {
-                        const dom =
-                          c.domicilios.find((d) => d.esPredeterminado) ?? c.domicilios[0];
-                        setDestino({
-                          nombre: c.nombre,
-                          telefono: c.telefono,
-                          calle: dom?.calle ?? "",
-                          numero: dom?.numero ?? "",
-                          piso: dom?.piso ?? "",
-                          referencia: dom?.referencia ?? "",
-                          localidadId: dom?.localidadId ?? destino.localidadId,
-                          sectorId: dom?.sectorId ?? destino.sectorId,
-                          clienteId: c.id,
-                          domicilioId: dom?.id,
-                        });
-                      }}
-                    />
-                  </div>
+                  <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                    <Truck className="size-4" />
+                    Datos de destino
+                  </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="grid gap-1.5">
                       <Label htmlFor="destino-nombre" className="text-xs text-muted-foreground">
-                        Destinatario
+                        Destino
                       </Label>
-                      <Input
+                      <ClienteSearchInput
                         id="destino-nombre"
                         value={destino.nombre}
-                        onChange={(e) =>
+                        onChange={(v) =>
                           setDestino({
                             ...destino,
-                            nombre: e.target.value,
+                            nombre: v,
                             clienteId: undefined,
                             domicilioId: undefined,
                           })
                         }
-                        aria-invalid={!!errors.destinoNombre}
+                        onSelectCliente={(c) => {
+                          const dom =
+                            c.domicilios.find((d) => d.esPredeterminado) ?? c.domicilios[0];
+                          setDestino({
+                            nombre: c.nombre,
+                            telefono: c.telefono,
+                            calle: dom?.calle ?? "",
+                            numero: dom?.numero ?? "",
+                            piso: dom?.piso ?? "",
+                            referencia: dom?.referencia ?? "",
+                            localidadId: dom?.localidadId ?? destino.localidadId,
+                            sectorId: dom?.sectorId ?? destino.sectorId,
+                            clienteId: c.id,
+                            domicilioId: dom?.id,
+                          });
+                        }}
+                        placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                        ariaInvalid={!!errors.destinoNombre}
                       />
                       {errors.destinoNombre && (
                         <p className="text-xs text-destructive">{errors.destinoNombre}</p>
@@ -638,35 +648,44 @@ export function NuevaEncomiendaView({
                   <div className="grid gap-1.5">
                     <Label className="text-xs text-muted-foreground">Bultos</Label>
                     <Input
-                      type="number"
-                      min={1}
+                      type="text"
+                      inputMode="numeric"
                       value={bultos}
-                      onChange={(e) => setBultos(Number(e.target.value) || 1)}
+                      onChange={(e) => {
+                        const cleaned = sanitizeIntegerInput(e.target.value);
+                        setBultos(cleaned === "" ? 1 : Math.max(1, Number(cleaned)));
+                      }}
+                      aria-invalid={!!errors.bultos}
                     />
+                    {errors.bultos && <p className="text-xs text-destructive">{errors.bultos}</p>}
                   </div>
                   <div className="grid gap-1.5">
                     <Label className="text-xs text-muted-foreground">Flete ($)</Label>
                     <Input
-                      type="number"
-                      min={0}
+                      type="text"
+                      inputMode="decimal"
                       placeholder="0"
                       value={flete}
-                      onChange={(e) =>
-                        setFlete(e.target.value === "" ? "" : Number(e.target.value))
-                      }
+                      onChange={(e) => {
+                        const cleaned = sanitizeMoneyInput(e.target.value);
+                        setFlete(cleaned === "" ? "" : Math.max(0, Number(cleaned)));
+                      }}
+                      aria-invalid={!!errors.flete}
                     />
+                    {errors.flete && <p className="text-xs text-destructive">{errors.flete}</p>}
                   </div>
                   {tipo === "efectivo" && (
                     <div className="grid gap-1.5">
                       <Label className="text-xs text-muted-foreground">Monto a reembolsar</Label>
                       <Input
-                        type="number"
-                        min={0}
+                        type="text"
+                        inputMode="decimal"
                         placeholder="0"
                         value={montoCrr}
-                        onChange={(e) =>
-                          setMontoCrr(e.target.value === "" ? "" : Number(e.target.value))
-                        }
+                        onChange={(e) => {
+                          const cleaned = sanitizeMoneyInput(e.target.value);
+                          setMontoCrr(cleaned === "" ? "" : Math.max(0, Number(cleaned)));
+                        }}
                         aria-invalid={!!errors.montoCrr}
                       />
                       {errors.montoCrr && (
@@ -737,26 +756,21 @@ export function NuevaEncomiendaView({
             {!remitenteConfirmado ? (
               <Card>
                 <CardContent className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <p className="flex items-center gap-2 text-sm font-semibold">
-                      <Building2 className="size-4" />
-                      Elegí el remitente de esta carga
-                    </p>
-                    <ClienteQuickPick
-                      onSelect={(c: ClienteApi) => {
-                        setOrigen({ nombre: c.nombre, telefono: c.telefono, clienteId: c.id });
-                        setRemitenteConfirmado(true);
-                      }}
-                    />
-                  </div>
+                  <p className="flex items-center gap-2 text-sm font-semibold">
+                    <Building2 className="size-4" />
+                    Elegí el remitente de esta carga
+                  </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="grid gap-1.5">
-                      <Label className="text-xs text-muted-foreground">Remitente</Label>
-                      <Input
+                      <Label className="text-xs text-muted-foreground">Origen</Label>
+                      <ClienteSearchInput
                         value={origen.nombre}
-                        onChange={(e) =>
-                          setOrigen({ ...origen, nombre: e.target.value, clienteId: undefined })
-                        }
+                        onChange={(v) => setOrigen({ ...origen, nombre: v, clienteId: undefined })}
+                        onSelectCliente={(c) => {
+                          setOrigen({ nombre: c.nombre, telefono: c.telefono, clienteId: c.id });
+                          setRemitenteConfirmado(true);
+                        }}
+                        placeholder="Nombre — buscá por nombre o cargá uno nuevo"
                       />
                     </div>
                     <div className="grid gap-1.5">
@@ -938,47 +952,44 @@ export function NuevaEncomiendaView({
                       className="border-primary/50 ring-1 ring-primary/50"
                     >
                       <CardContent className="flex flex-col gap-4">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-semibold">Destino</p>
-                          <ClienteQuickPick
-                            onSelect={(c: ClienteApi) => {
-                              const dom =
-                                c.domicilios.find((d) => d.esPredeterminado) ?? c.domicilios[0];
-                              actualizarFila(fila.id, {
-                                destino: {
-                                  nombre: c.nombre,
-                                  telefono: c.telefono,
-                                  calle: dom?.calle ?? "",
-                                  numero: dom?.numero ?? "",
-                                  piso: dom?.piso ?? "",
-                                  referencia: dom?.referencia ?? "",
-                                  localidadId: dom?.localidadId ?? fila.destino.localidadId,
-                                  sectorId: dom?.sectorId ?? fila.destino.sectorId,
-                                  clienteId: c.id,
-                                  domicilioId: dom?.id,
-                                },
-                              });
-                            }}
-                          />
-                        </div>
+                        <p className="text-sm font-semibold">Destino</p>
 
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="grid gap-1.5">
-                            <Label className="text-xs text-muted-foreground">Destinatario</Label>
-                            <Input
+                            <Label className="text-xs text-muted-foreground">Destino</Label>
+                            <ClienteSearchInput
                               disabled={guardando}
                               value={fila.destino.nombre}
-                              onChange={(e) =>
+                              onChange={(v) =>
                                 actualizarFila(fila.id, {
                                   destino: {
                                     ...fila.destino,
-                                    nombre: e.target.value,
+                                    nombre: v,
                                     clienteId: undefined,
                                     domicilioId: undefined,
                                   },
                                 })
                               }
-                              aria-invalid={!!fila.errores.nombre}
+                              onSelectCliente={(c) => {
+                                const dom =
+                                  c.domicilios.find((d) => d.esPredeterminado) ?? c.domicilios[0];
+                                actualizarFila(fila.id, {
+                                  destino: {
+                                    nombre: c.nombre,
+                                    telefono: c.telefono,
+                                    calle: dom?.calle ?? "",
+                                    numero: dom?.numero ?? "",
+                                    piso: dom?.piso ?? "",
+                                    referencia: dom?.referencia ?? "",
+                                    localidadId: dom?.localidadId ?? fila.destino.localidadId,
+                                    sectorId: dom?.sectorId ?? fila.destino.sectorId,
+                                    clienteId: c.id,
+                                    domicilioId: dom?.id,
+                                  },
+                                });
+                              }}
+                              placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                              ariaInvalid={!!fila.errores.nombre}
                             />
                             {fila.errores.nombre && (
                               <p className="text-xs text-destructive">{fila.errores.nombre}</p>
@@ -1112,15 +1123,20 @@ export function NuevaEncomiendaView({
                             <Label className="text-xs text-muted-foreground">Flete ($)</Label>
                             <Input
                               disabled={guardando}
-                              type="number"
-                              min={0}
+                              type="text"
+                              inputMode="decimal"
                               value={fila.flete}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const cleaned = sanitizeMoneyInput(e.target.value);
                                 actualizarFila(fila.id, {
-                                  flete: e.target.value === "" ? "" : Number(e.target.value),
-                                })
-                              }
+                                  flete: cleaned === "" ? "" : Math.max(0, Number(cleaned)),
+                                });
+                              }}
+                              aria-invalid={!!fila.errores.flete}
                             />
+                            {fila.errores.flete && (
+                              <p className="text-xs text-destructive">{fila.errores.flete}</p>
+                            )}
                           </div>
                           <div className="grid gap-1.5">
                             <Label className="text-xs text-muted-foreground">Se paga en</Label>
@@ -1168,15 +1184,20 @@ export function NuevaEncomiendaView({
                             <Label className="text-xs text-muted-foreground">Bultos</Label>
                             <Input
                               disabled={guardando}
-                              type="number"
-                              min={1}
+                              type="text"
+                              inputMode="numeric"
                               value={fila.bultos}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const cleaned = sanitizeIntegerInput(e.target.value);
                                 actualizarFila(fila.id, {
-                                  bultos: Number(e.target.value) || 1,
-                                })
-                              }
+                                  bultos: cleaned === "" ? 1 : Math.max(1, Number(cleaned)),
+                                });
+                              }}
+                              aria-invalid={!!fila.errores.bultos}
                             />
+                            {fila.errores.bultos && (
+                              <p className="text-xs text-destructive">{fila.errores.bultos}</p>
+                            )}
                           </div>
                         </div>
 
@@ -1187,14 +1208,15 @@ export function NuevaEncomiendaView({
                             </Label>
                             <Input
                               disabled={guardando}
-                              type="number"
-                              min={0}
+                              type="text"
+                              inputMode="decimal"
                               value={fila.montoCrr}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const cleaned = sanitizeMoneyInput(e.target.value);
                                 actualizarFila(fila.id, {
-                                  montoCrr: e.target.value === "" ? "" : Number(e.target.value),
-                                })
-                              }
+                                  montoCrr: cleaned === "" ? "" : Math.max(0, Number(cleaned)),
+                                });
+                              }}
                               aria-invalid={!!fila.errores.montoCrr}
                             />
                             {fila.errores.montoCrr && (

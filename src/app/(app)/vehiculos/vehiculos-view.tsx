@@ -2,14 +2,16 @@
 
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Bike, Truck, Car, Package } from "lucide-react";
+import { toast } from "sonner";
+import { Pencil, Trash2, Bike, Truck, Car, Package } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { VehiculoFormDialog } from "@/components/vehiculos/vehiculo-form-dialog";
-import { updateVehiculoAction } from "@/server/actions";
+import { updateVehiculoAction, removeVehiculoAction } from "@/server/actions";
 import type { VehiculoBackend } from "@/types";
 
 const TIPO_ICON: Record<string, typeof Bike> = {
@@ -19,6 +21,20 @@ const TIPO_ICON: Record<string, typeof Bike> = {
 };
 
 export function VehiculosView({ vehiculos }: { vehiculos: VehiculoBackend[] }) {
+  const [toDelete, setToDelete] = React.useState<VehiculoBackend | null>(null);
+
+  async function confirmDelete() {
+    if (!toDelete) return;
+    try {
+      await removeVehiculoAction(toDelete.id);
+      toast.success("Vehículo dado de baja");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo dar de baja el vehículo.");
+    } finally {
+      setToDelete(null);
+    }
+  }
+
   const columns = React.useMemo<ColumnDef<VehiculoBackend>[]>(
     () => [
       {
@@ -64,6 +80,14 @@ export function VehiculosView({ vehiculos }: { vehiculos: VehiculoBackend[] }) {
                 </Button>
               }
             />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-destructive hover:text-destructive"
+              onClick={() => setToDelete(row.original)}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
           </div>
         ),
       },
@@ -85,6 +109,15 @@ export function VehiculosView({ vehiculos }: { vehiculos: VehiculoBackend[] }) {
         searchPlaceholder="Buscar por nombre o patente..."
         emptyTitle="No hay vehículos cargados"
         pageSize={15}
+      />
+
+      <ConfirmDialog
+        open={!!toDelete}
+        onOpenChange={(v) => !v && setToDelete(null)}
+        title={`¿Dar de baja a ${toDelete?.nombre}?`}
+        description="El vehículo se marca como inactivo y deja de estar disponible para nuevos despachos. No se borra su historial."
+        confirmLabel="Dar de baja"
+        onConfirm={confirmDelete}
       />
     </div>
   );

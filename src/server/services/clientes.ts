@@ -58,6 +58,44 @@ export async function searchClientes(q: string): Promise<ClienteApi[]> {
   return apiFetch<ClienteApi[]>(`/clientes?${params.toString()}`, { token });
 }
 
+// El `q` de GET /clientes solo matchea por el INICIO del nombre completo
+// (confirmado en vivo, 2026-09-10: buscar "Duarte" no encuentra a "Ramona
+// Duarte", que si aparece buscando "Ramona") - no sirve para buscar por
+// apellido. Como no hay forma de pedirle eso al backend, esta funcion trae
+// el listado completo (mismo endpoint que ya usa la pantalla de Clientes,
+// tope de 200) y filtra en el cliente: matchea si ALGUNA palabra del nombre
+// arranca con la busqueda, sin importar la posicion ("galarza" encuentra a
+// "Juan Galarza", "ramona" sigue encontrando a "Ramona Duarte"). Prioriza
+// los matches por la primera palabra (el comportamiento de antes) antes que
+// los de apellido, para no cambiar el orden en el caso mas comun.
+function normalizarNombre(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+export async function searchClientesPorNombre(q: string): Promise<ClienteApi[]> {
+  const query = normalizarNombre(q.trim());
+  if (query.length < 2) return [];
+
+  const clientes = await listClientes();
+  const porPrimeraPalabra: ClienteApi[] = [];
+  const porOtraPalabra: ClienteApi[] = [];
+
+  for (const c of clientes) {
+    const palabras = normalizarNombre(c.nombre).split(/\s+/).filter(Boolean);
+    if (palabras.length === 0) continue;
+    if (palabras[0].startsWith(query)) {
+      porPrimeraPalabra.push(c);
+    } else if (palabras.some((p) => p.startsWith(query))) {
+      porOtraPalabra.push(c);
+    }
+  }
+
+  return [...porPrimeraPalabra, ...porOtraPalabra].slice(0, 8);
+}
+
 // GET /clientes sin `q` devuelve el listado completo (confirmado en vivo) —
 // lo usa la pantalla de administracion de Clientes, a diferencia de
 // searchClientes (con `q`, para el buscador rapido de Nueva Encomienda).

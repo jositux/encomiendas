@@ -204,7 +204,7 @@ export async function crearEnvioAction(data: CrearEnvioInput) {
 }
 
 export async function searchClientesAction(q: string) {
-  return clientesService.searchClientes(q);
+  return clientesService.searchClientesPorNombre(q);
 }
 
 export async function removeClienteAction(id: string) {

@@ -36,17 +36,17 @@ import {
 import { createSucursalAction, updateSucursalAction } from "@/server/actions";
 import type { PuntoBackend, LocalidadBackend } from "@/types";
 
-const TIPO_LABEL: Record<PuntoBackend["tipo"], string> = {
-  base: "Base",
-  deposito: "Depósito",
-};
-
+// `embedded` la usa la pestaña "Puntos / Sucursales" de Geografía: mismo
+// componente, sin el título de página propio (Geografía ya tiene el suyo),
+// con el botón de alta en una barra más liviana en vez del PageHeader.
 export function SucursalesView({
   sucursales,
   localidades,
+  embedded = false,
 }: {
   sucursales: PuntoBackend[];
   localidades: LocalidadBackend[];
+  embedded?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const [nombre, setNombre] = React.useState("");
@@ -74,67 +74,78 @@ export function SucursalesView({
     }
   }
 
+  const nuevaSucursalDialog = (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button className="gap-1.5">
+          <Plus className="size-4" /> Nueva sucursal
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nueva sucursal</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label>Nombre</Label>
+            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Localidad</Label>
+            <Select value={localidadId} onValueChange={setLocalidadId}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {localidades.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Tipo</Label>
+            <Select value={tipo} onValueChange={(v) => setTipo(v as PuntoBackend["tipo"])}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="base">Base</SelectItem>
+                <SelectItem value="deposito">Depósito</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleCreate} disabled={submitting}>
+            Crear
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
     <div>
-      <PageHeader
-        title="Sucursales"
-        description="Bases y depósitos donde opera la empresa."
-        actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-1.5">
-                <Plus className="size-4" /> Nueva sucursal
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Nueva sucursal</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4">
-                <div className="grid gap-1.5">
-                  <Label>Nombre</Label>
-                  <Input value={nombre} onChange={(e) => setNombre(e.target.value)} />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>Localidad</Label>
-                  <Select value={localidadId} onValueChange={setLocalidadId}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {localidades.map((l) => (
-                        <SelectItem key={l.id} value={l.id}>
-                          {l.nombre}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>Tipo</Label>
-                  <Select value={tipo} onValueChange={(v) => setTipo(v as PuntoBackend["tipo"])}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="base">Base</SelectItem>
-                      <SelectItem value="deposito">Depósito</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleCreate} disabled={submitting}>
-                  Crear
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        }
-      />
+      {embedded ? (
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">
+            {sucursales.length} puntos entre bases y depósitos.
+          </p>
+          {nuevaSucursalDialog}
+        </div>
+      ) : (
+        <PageHeader
+          title="Sucursales"
+          description="Bases y depósitos donde opera la empresa."
+          actions={nuevaSucursalDialog}
+        />
+      )}
 
       <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
@@ -164,9 +175,38 @@ export function SucursalesView({
                     {s.esDepositoCentral && <Badge variant="outline">Depósito central</Badge>}
                   </div>
                 </TableCell>
-                <TableCell className="text-muted-foreground">{s.localidadNombre}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{TIPO_LABEL[s.tipo]}</Badge>
+                  <Select
+                    value={s.localidadId}
+                    onValueChange={(v) => v !== s.localidadId && updateSucursalAction(s.id, { localidadId: v })}
+                  >
+                    <SelectTrigger className="h-8 w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {localidades.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell>
+                  <Select
+                    value={s.tipo}
+                    onValueChange={(v) =>
+                      v !== s.tipo && updateSucursalAction(s.id, { tipo: v as PuntoBackend["tipo"] })
+                    }
+                  >
+                    <SelectTrigger className="h-8 w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="base">Base</SelectItem>
+                      <SelectItem value="deposito">Depósito</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </TableCell>
                 <TableCell>
                   <Switch
