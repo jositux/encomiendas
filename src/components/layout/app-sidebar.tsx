@@ -21,15 +21,15 @@ export function SidebarContent({
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div
         className={cn(
-          "flex h-14 items-center gap-2 border-b border-sidebar-border px-4",
+          "flex h-16 items-center gap-3 border-b border-sidebar-border px-5",
           collapsed && "justify-center px-0"
         )}
       >
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-          <Package className="size-4.5" />
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+          <Package className="size-5" />
         </div>
         {!collapsed && (
-          <div className="leading-tight">
+          <div className="space-y-0.5">
             <p className="text-sm font-semibold">Neo Encomiendas</p>
             <p className="text-[11px] text-sidebar-foreground/50">
               Gestión logística
@@ -94,7 +94,7 @@ export function AppSidebar() {
         variant="secondary"
         size="icon"
         onClick={toggleSidebar}
-        className="absolute top-16 -right-3 z-40 size-6 rounded-full border shadow-sm"
+        className="absolute top-[52px] -right-3 z-40 size-6 rounded-full border shadow-sm"
         aria-label={collapsed ? "Expandir menú" : "Colapsar menú"}
       >
         {collapsed ? (
