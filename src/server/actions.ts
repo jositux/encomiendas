@@ -19,6 +19,7 @@ import * as usuariosService from "./services/usuarios";
 import * as enviosService from "./services/envios";
 import * as clientesService from "./services/clientes";
 import type { CrearEnvioInput } from "./services/envios";
+import { ApiError } from "./api-client";
 import type {
   Encomienda,
   GrupoRuta,
@@ -183,7 +184,21 @@ export async function setLocalidadesRutaAction(id: string, localidadIds: string[
 
 // -- Envios (Nueva Encomienda, API real) -------------------------------------------
 
-export async function crearEnvioAction(data: CrearEnvioInput) {
+// Devuelve un resultado normal ({ok:false, ...}) en vez de lanzar cuando el
+// backend rechaza el envío por una regla de negocio esperada (ApiError, ej.
+// "no hay servicio_par" -> PAR_SIN_SERVICIO). Motivo, confirmado en vivo
+// contra producción (Vercel) el 2026-09-11: cualquier error que un Server
+// Action deja escapar (throw) llega al cliente con el mensaje REDACTADO por
+// Next.js en producción (queda el genérico "An error occurred in the Server
+// Components render..." + un digest, nunca el texto real) — solo en `pnpm
+// dev` se ve el mensaje completo. Como esta es una situación de negocio
+// normal (no un bug), se atrapa acá y se devuelve como dato: así el cliente
+// puede mostrar el título real del backend (`err.title`, ej. "No llegamos a
+// ese destino") tanto en local como en producción. Un error real e
+// inesperado (ej. el backend caído) sigue relanzándose tal cual.
+export async function crearEnvioAction(
+  data: CrearEnvioInput
+): Promise<{ ok: true; envio: Awaited<ReturnType<typeof enviosService.crearEnvio>> } | { ok: false; title: string; message: string }> {
   // Si el remitente no vino de ClienteQuickPick (sin clienteId), tratamos de
   // asociarlo a un Cliente real (o crear uno nuevo) para que la base de
   // clientes se complete sola. Mejor esfuerzo: si falla, seguimos con el
@@ -198,9 +213,16 @@ export async function crearEnvioAction(data: CrearEnvioInput) {
     if (clienteId) remitente = { ...remitente, clienteId };
   }
 
-  const item = await enviosService.crearEnvio({ ...data, remitente });
-  revalidateAll();
-  return item;
+  try {
+    const item = await enviosService.crearEnvio({ ...data, remitente });
+    revalidateAll();
+    return { ok: true, envio: item };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, title: err.title, message: err.message };
+    }
+    throw err;
+  }
 }
 
 export async function searchClientesAction(q: string) {

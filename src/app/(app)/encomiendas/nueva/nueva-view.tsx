@@ -310,9 +310,16 @@ export function NuevaEncomiendaView({
         contrarreembolsoImporte: tipo === "efectivo" ? Number(montoCrr) : undefined,
         remitoManualNumero: remitoManual.trim() || undefined,
       };
-      const created = await crearEnvioAction(data);
-      setCargados((prev) => [created, ...prev]);
-      toast.success(`Encomienda ${guiaDeEnvio(created)} cargada correctamente`);
+      const resultado = await crearEnvioAction(data);
+      if (!resultado.ok) {
+        // Rechazo de negocio del backend (ej. "no hay servicio_par" para ese
+        // origen/destino) — no es una excepción real, se muestra el título
+        // real que ya manda el backend en vez de dejar el formulario roto.
+        toast.error(resultado.title || resultado.message);
+        return;
+      }
+      setCargados((prev) => [resultado.envio, ...prev]);
+      toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} cargada correctamente`);
       resetForm();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo cargar la encomienda.");
@@ -388,10 +395,16 @@ export function NuevaEncomiendaView({
         contrarreembolsoImporte: fila.tipo === "efectivo" ? Number(fila.montoCrr) : undefined,
         remitoManualNumero: fila.remitoManual.trim() || undefined,
       };
-      const created = await crearEnvioAction(data);
-      setCargados((prev) => [created, ...prev]);
-      actualizarFila(id, { status: "ok", resultado: created, errorMsg: undefined });
-      toast.success(`Encomienda ${guiaDeEnvio(created)} cargada correctamente`);
+      const resultado = await crearEnvioAction(data);
+      if (!resultado.ok) {
+        const msg = resultado.title || resultado.message;
+        actualizarFila(id, { status: "error", errorMsg: msg });
+        toast.error(msg);
+        return;
+      }
+      setCargados((prev) => [resultado.envio, ...prev]);
+      actualizarFila(id, { status: "ok", resultado: resultado.envio, errorMsg: undefined });
+      toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} cargada correctamente`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "No se pudo cargar este destino.";
       actualizarFila(id, { status: "error", errorMsg: msg });
