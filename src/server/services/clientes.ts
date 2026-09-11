@@ -5,15 +5,29 @@ import { requireToken } from "./shared";
 import { listLocalidades } from "./localidades";
 import { listSectores } from "./sectores";
 
-// El backend real modela cliente + domicilio(s) como entidades propias
-// (POST /clientes exige tipo/nombre/telefono/domicilios[]), muy distinto del
-// mock (Cliente con un solo domicilio como string). Para Nueva Encomienda no
-// hace falta tener un Cliente real: remitente/destinatario del envio son
-// value objects sueltos (ver envios.ts) — el cliente es solo un atajo
-// opcional para autocompletar datos repetidos.
+// El backend real modela cliente + domicilio, pero NO como entidades
+// separadas: cada cliente tiene exactamente UN domicilio, embebido como
+// campos planos del propio cliente (localidadId/sectorId/calle/numero/piso/
+// referencia), no un array `domicilios[]` con id propio. Para Nueva
+// Encomienda no hace falta tener un Cliente real: remitente/destinatario
+// del envio son value objects sueltos (ver envios.ts) — el cliente es solo
+// un atajo opcional para autocompletar datos repetidos.
 //
-// Confirmado en vivo (GET /clientes sin `q`, 2026-09-10): la respuesta cruda
-// es exactamente este shape, sin campos extra.
+// Confirmado en vivo (GET /clientes sin `q`, 2026-09-10): en ese momento la
+// respuesta cruda traia `domicilios: DomicilioApi[]` (con id/etiqueta/
+// esPredeterminado propios). **Cambio de backend confirmado en vivo el
+// 2026-09-11** (reportado por el usuario: "el cliente quedó con una sóla
+// dirección en la misma entidad") — con una pagina de debug temporal
+// (`/debug-clientes`, volcando `listClientes()` crudo, borrada despues de
+// confirmar) se vio que la respuesta real HOY ya no tiene `domicilios[]`:
+// tiene los campos de domicilio directo en el cliente (mismo nombre de
+// campo que antes tenian adentro de cada elemento del array, sin `id`/
+// `etiqueta`/`esPredeterminado` propios — un cliente, un domicilio). Esto
+// rompia `clientes-view.tsx` y los `onSelectCliente` de Nueva Encomienda,
+// que hacian `cliente.domicilios.find(...)` sobre un campo que ya no
+// existe (`Cannot read properties of undefined (reading 'find')` en
+// consola, crasheaba /clientes por completo). Se corrigieron los tres
+// consumidores para leer los campos planos directo del cliente.
 //
 // Confirmado en vivo el 2026-09-10: en ese momento el backend etapa 1 SOLO
 // tenia POST /clientes (crear) y GET /clientes (leer/buscar) — PATCH/PUT/
@@ -22,18 +36,6 @@ import { listSectores } from "./sectores";
 // cliente como eliminado/inactivo del lado del servidor en vez de borrar la
 // fila; GET /clientes ya no lo devuelve). No hay PATCH/PUT — sigue sin existir
 // edicion, solo alta + listado + baja.
-export interface DomicilioApi {
-  id: string;
-  localidadId: string;
-  sectorId: string;
-  calle: string;
-  numero: string | null;
-  piso: string | null;
-  referencia: string | null;
-  etiqueta: string | null;
-  esPredeterminado: boolean;
-}
-
 export interface ClienteApi {
   id: string;
   tipo: "persona" | "empresa";
@@ -45,7 +47,13 @@ export interface ClienteApi {
   // Agregado por el backend junto con el soft-delete (no estaba el
   // 2026-09-10 original). GET /clientes ya no devuelve los inactivos.
   activo: boolean;
-  domicilios: DomicilioApi[];
+  // Domicilio unico, plano (ver nota arriba — 2026-09-11).
+  localidadId: string;
+  sectorId: string;
+  calle: string;
+  numero: string | null;
+  piso: string | null;
+  referencia: string | null;
 }
 
 // GET /clientes?q= exige minimo 2 caracteres — evitamos pegarle al backend
@@ -104,15 +112,6 @@ export async function listClientes(): Promise<ClienteApi[]> {
   return apiFetch<ClienteApi[]>("/clientes?limite=200", { token });
 }
 
-export interface DomicilioInput {
-  localidadId: string;
-  sectorId: string;
-  calle: string;
-  numero?: string;
-  piso?: string;
-  referencia?: string;
-}
-
 export async function createCliente(data: {
   tipo: "persona" | "empresa";
   nombre: string;
@@ -120,7 +119,12 @@ export async function createCliente(data: {
   documento?: string;
   email?: string;
   esCuentaCorriente?: boolean;
-  domicilios: DomicilioInput[];
+  localidadId: string;
+  sectorId: string;
+  calle: string;
+  numero?: string;
+  piso?: string;
+  referencia?: string;
 }): Promise<ClienteApi> {
   const token = await requireToken();
   return apiFetch<ClienteApi>("/clientes", { method: "POST", token, body: data });
@@ -149,8 +153,9 @@ export async function removeCliente(id: string): Promise<void> {
 // resultados de searchClientes (mismo endpoint que ClienteQuickPick).
 //
 // Domicilio placeholder: confirmado en vivo (2026-09-10) que POST /clientes
-// exige `domicilios` con al menos 1 elemento ("domicilios must contain at
-// least 1 elements") — el formulario de origen de Nueva Encomienda no pide
+// exige domicilio ("domicilios must contain at least 1 elements" con la
+// forma vieja de array — ver nota arriba, 2026-09-11, sobre el cambio a
+// domicilio plano) — el formulario de origen de Nueva Encomienda no pide
 // domicilio del remitente, y no queremos inventar una direccion real (le
 // asignaria al cliente un domicilio falso). Como resolucion practica,
 // creamos un domicilio placeholder explicito — localidad/sector por defecto
@@ -186,17 +191,12 @@ export async function ensureClienteRemitente(
       tipo: "persona",
       nombre: nombreTrim,
       telefono: telefonoTrim,
-      domicilios: [
-        {
-          localidadId,
-          sectorId,
-          calle: "Sin domicilio (completar) — cargado desde Nueva Encomienda",
-        },
-      ],
+      localidadId,
+      sectorId,
+      calle: "Sin domicilio (completar) — cargado desde Nueva Encomienda",
     });
     return nuevo.id;
   } catch {
     return undefined;
   }
 }
-

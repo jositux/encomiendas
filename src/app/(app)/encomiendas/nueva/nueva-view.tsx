@@ -13,10 +13,12 @@ import {
   RotateCcw,
   Building2,
   Phone,
+  GripVertical,
+  Pencil,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 import { PageHeader } from "@/components/shared/page-header";
-import { LocalidadSectorSelect } from "@/components/shared/localidad-sector-select";
 import { ClienteSearchInput } from "@/components/shared/cliente-search-input";
 import {
   bultosSchema,
@@ -184,7 +186,6 @@ function validarFila(f: FilaDestino): Record<string, string> {
   if (!f.destino.nombre.trim()) next.nombre = "Ingresá el destinatario.";
   if (!f.destino.calle.trim()) next.calle = "Ingresá la calle de destino.";
   if (!f.destino.localidadId) next.localidad = "Elegí la localidad de destino.";
-  if (!f.destino.sectorId) next.sector = "Elegí el sector de destino.";
   const bultosCheck = bultosSchema.safeParse(f.bultos);
   if (!bultosCheck.success) next.bultos = bultosCheck.error.issues[0].message;
   const fleteCheck = montoNoNegativoSchema.safeParse(f.flete === "" ? 0 : f.flete);
@@ -225,6 +226,11 @@ export function NuevaEncomiendaView({
   const [cargados, setCargados] = React.useState<EnvioApi[]>(envios);
 
   const [filas, setFilas] = React.useState<FilaDestino[]>([]);
+  // Reordenar destinos de Carga rápida arrastrando (drag & drop nativo, sin
+  // librería nueva): dragId guarda qué fila se está arrastrando; al soltar
+  // sobre otra fila, esa fila pasa a ocupar el lugar de la fila destino.
+  // Puramente visual/organizativo — no cambia nada de lo que ya se guardó.
+  const [dragId, setDragId] = React.useState<string | null>(null);
   // Carga rápida: el remitente queda "fijo" recién cuando el usuario lo confirma
   // explícitamente (botón "Confirmar remitente"), nunca solo por tener texto en
   // el campo Nombre — de lo contrario la UI saltaba a la vista "bloqueada" apenas
@@ -238,10 +244,6 @@ export function NuevaEncomiendaView({
     (id: string) => localidades.find((l) => l.id === id)?.nombre ?? "—",
     [localidades]
   );
-  const sectorNombre = React.useCallback(
-    (id: string) => sectores.find((s) => s.id === id)?.nombre ?? "—",
-    [sectores]
-  );
 
   function validate() {
     const next: Record<string, string> = {};
@@ -249,7 +251,6 @@ export function NuevaEncomiendaView({
     if (!destino.nombre.trim()) next.destinoNombre = "Ingresá el destinatario.";
     if (!destino.calle.trim()) next.destinoCalle = "Ingresá la calle de destino.";
     if (!destino.localidadId) next.destinoLocalidad = "Elegí la localidad de destino.";
-    if (!destino.sectorId) next.destinoSector = "Elegí el sector de destino.";
     const bultosCheck = bultosSchema.safeParse(bultos);
     if (!bultosCheck.success) next.bultos = bultosCheck.error.issues[0].message;
     const fleteCheck = montoNoNegativoSchema.safeParse(flete === "" ? 0 : flete);
@@ -348,6 +349,18 @@ export function NuevaEncomiendaView({
 
   function quitarFila(id: string) {
     setFilas((prev) => prev.filter((f) => f.id !== id));
+  }
+
+  function moverFila(sourceId: string, targetId: string) {
+    setFilas((prev) => {
+      const from = prev.findIndex((f) => f.id === sourceId);
+      const to = prev.findIndex((f) => f.id === targetId);
+      if (from === -1 || to === -1 || from === to) return prev;
+      const next = [...prev];
+      const [movida] = next.splice(from, 1);
+      next.splice(to, 0, movida);
+      return next;
+    });
   }
 
   async function guardarFila(id: string) {
@@ -534,19 +547,16 @@ export function NuevaEncomiendaView({
                           })
                         }
                         onSelectCliente={(c) => {
-                          const dom =
-                            c.domicilios.find((d) => d.esPredeterminado) ?? c.domicilios[0];
                           setDestino({
                             nombre: c.nombre,
                             telefono: c.telefono,
-                            calle: dom?.calle ?? "",
-                            numero: dom?.numero ?? "",
-                            piso: dom?.piso ?? "",
-                            referencia: dom?.referencia ?? "",
-                            localidadId: dom?.localidadId ?? destino.localidadId,
-                            sectorId: dom?.sectorId ?? destino.sectorId,
+                            calle: c.calle ?? "",
+                            numero: c.numero ?? "",
+                            piso: c.piso ?? "",
+                            referencia: c.referencia ?? "",
+                            localidadId: c.localidadId ?? destino.localidadId,
+                            sectorId: c.sectorId ?? destino.sectorId,
                             clienteId: c.id,
-                            domicilioId: dom?.id,
                           });
                         }}
                         placeholder="Nombre — buscá por nombre o cargá uno nuevo"
@@ -612,14 +622,13 @@ export function NuevaEncomiendaView({
                         onChange={(e) => setDestino({ ...destino, referencia: e.target.value })}
                       />
                     </div>
-                    <div className="sm:col-span-2">
-                      <LocalidadSectorSelect
-                        idPrefix="destino"
-                        localidades={localidades}
-                        sectores={sectores}
-                        localidadId={destino.localidadId}
-                        sectorId={destino.sectorId}
-                        onChangeLocalidad={(id) => {
+                    <div className="sm:col-span-2 grid gap-1.5">
+                      <Label htmlFor="destino-localidad" className="text-xs text-muted-foreground">
+                        Localidad
+                      </Label>
+                      <Select
+                        value={destino.localidadId}
+                        onValueChange={(id) => {
                           const primerSector = sectores.find((s) => s.localidadId === id)?.id ?? "";
                           setDestino({
                             ...destino,
@@ -629,12 +638,20 @@ export function NuevaEncomiendaView({
                             domicilioId: undefined,
                           });
                         }}
-                        onChangeSector={(id) => setDestino({ ...destino, sectorId: id })}
-                      />
-                      {(errors.destinoLocalidad || errors.destinoSector) && (
-                        <p className="mt-1 text-xs text-destructive">
-                          {errors.destinoLocalidad || errors.destinoSector}
-                        </p>
+                      >
+                        <SelectTrigger id="destino-localidad" className="w-full">
+                          <SelectValue placeholder="Localidad" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {localidades.map((l) => (
+                            <SelectItem key={l.id} value={l.id}>
+                              {l.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.destinoLocalidad && (
+                        <p className="mt-1 text-xs text-destructive">{errors.destinoLocalidad}</p>
                       )}
                     </div>
                   </div>
@@ -880,8 +897,30 @@ export function NuevaEncomiendaView({
                     return (
                       <div
                         key={fila.id}
-                        className="flex flex-wrap items-center gap-3 rounded-xl border border-success/30 bg-card p-3.5 shadow-xs"
+                        onDragOver={(ev) => ev.preventDefault()}
+                        onDrop={(ev) => {
+                          ev.preventDefault();
+                          if (dragId) moverFila(dragId, fila.id);
+                          setDragId(null);
+                        }}
+                        className={cn(
+                          "flex flex-wrap items-center gap-3 rounded-xl border border-success/30 bg-card p-3.5 shadow-xs transition-opacity",
+                          dragId === fila.id && "opacity-40"
+                        )}
                       >
+                        <button
+                          type="button"
+                          draggable
+                          onDragStart={(ev) => {
+                            ev.dataTransfer.effectAllowed = "move";
+                            setDragId(fila.id);
+                          }}
+                          onDragEnd={() => setDragId(null)}
+                          className="shrink-0 cursor-grab touch-none text-muted-foreground/60 hover:text-muted-foreground active:cursor-grabbing"
+                          aria-label="Arrastrar para reordenar"
+                        >
+                          <GripVertical className="size-4" />
+                        </button>
                         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
                           <CheckCircle2 className="size-4" />
                         </div>
@@ -891,14 +930,23 @@ export function NuevaEncomiendaView({
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
                           <span className="text-sm font-medium">{fila.destino.nombre}</span>
                           <span className="text-xs text-muted-foreground">
-                            {localidadNombre(fila.destino.localidadId)} /{" "}
-                            {sectorNombre(fila.destino.sectorId)}
+                            {localidadNombre(fila.destino.localidadId)}
                           </span>
                           <span className="text-xs text-muted-foreground">
                             {TIPOS.find((t) => t.value === fila.tipo)?.label} · $
                             {fila.flete === "" ? 0 : fila.flete} flete
                           </span>
                         </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1.5 text-muted-foreground"
+                          onClick={() => actualizarFila(fila.id, { status: "editando" })}
+                        >
+                          <Pencil className="size-3.5" />
+                          Editar
+                        </Button>
                         <Button
                           type="button"
                           variant="ghost"
@@ -917,8 +965,30 @@ export function NuevaEncomiendaView({
                     return (
                       <div
                         key={fila.id}
-                        className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/35 bg-card p-3.5 shadow-xs"
+                        onDragOver={(ev) => ev.preventDefault()}
+                        onDrop={(ev) => {
+                          ev.preventDefault();
+                          if (dragId) moverFila(dragId, fila.id);
+                          setDragId(null);
+                        }}
+                        className={cn(
+                          "flex flex-wrap items-center gap-3 rounded-xl border border-destructive/35 bg-card p-3.5 shadow-xs transition-opacity",
+                          dragId === fila.id && "opacity-40"
+                        )}
                       >
+                        <button
+                          type="button"
+                          draggable
+                          onDragStart={(ev) => {
+                            ev.dataTransfer.effectAllowed = "move";
+                            setDragId(fila.id);
+                          }}
+                          onDragEnd={() => setDragId(null)}
+                          className="shrink-0 cursor-grab touch-none text-muted-foreground/60 hover:text-muted-foreground active:cursor-grabbing"
+                          aria-label="Arrastrar para reordenar"
+                        >
+                          <GripVertical className="size-4" />
+                        </button>
                         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-destructive/15 text-destructive">
                           <AlertTriangle className="size-4" />
                         </div>
@@ -928,8 +998,7 @@ export function NuevaEncomiendaView({
                               {fila.destino.nombre || "Destino sin nombre"}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {localidadNombre(fila.destino.localidadId)} /{" "}
-                              {sectorNombre(fila.destino.sectorId)}
+                              {localidadNombre(fila.destino.localidadId)}
                             </span>
                           </div>
                           <p className="mt-0.5 truncate font-mono text-[11px] text-destructive">
@@ -962,10 +1031,34 @@ export function NuevaEncomiendaView({
                   return (
                     <Card
                       key={fila.id}
-                      className="border-primary/50 ring-1 ring-primary/50"
+                      onDragOver={(ev) => ev.preventDefault()}
+                      onDrop={(ev) => {
+                        ev.preventDefault();
+                        if (dragId) moverFila(dragId, fila.id);
+                        setDragId(null);
+                      }}
+                      className={cn(
+                        "border-primary/50 ring-1 ring-primary/50 transition-opacity",
+                        dragId === fila.id && "opacity-40"
+                      )}
                     >
                       <CardContent className="flex flex-col gap-4">
-                        <p className="text-sm font-semibold">Destino</p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            draggable
+                            onDragStart={(ev) => {
+                              ev.dataTransfer.effectAllowed = "move";
+                              setDragId(fila.id);
+                            }}
+                            onDragEnd={() => setDragId(null)}
+                            className="shrink-0 cursor-grab touch-none text-muted-foreground/60 hover:text-muted-foreground active:cursor-grabbing"
+                            aria-label="Arrastrar para reordenar"
+                          >
+                            <GripVertical className="size-4" />
+                          </button>
+                          <p className="text-sm font-semibold">Destino</p>
+                        </div>
 
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="grid gap-1.5">
@@ -984,20 +1077,17 @@ export function NuevaEncomiendaView({
                                 })
                               }
                               onSelectCliente={(c) => {
-                                const dom =
-                                  c.domicilios.find((d) => d.esPredeterminado) ?? c.domicilios[0];
                                 actualizarFila(fila.id, {
                                   destino: {
                                     nombre: c.nombre,
                                     telefono: c.telefono,
-                                    calle: dom?.calle ?? "",
-                                    numero: dom?.numero ?? "",
-                                    piso: dom?.piso ?? "",
-                                    referencia: dom?.referencia ?? "",
-                                    localidadId: dom?.localidadId ?? fila.destino.localidadId,
-                                    sectorId: dom?.sectorId ?? fila.destino.sectorId,
+                                    calle: c.calle ?? "",
+                                    numero: c.numero ?? "",
+                                    piso: c.piso ?? "",
+                                    referencia: c.referencia ?? "",
+                                    localidadId: c.localidadId ?? fila.destino.localidadId,
+                                    sectorId: c.sectorId ?? fila.destino.sectorId,
                                     clienteId: c.id,
-                                    domicilioId: dom?.id,
                                   },
                                 });
                               }}
@@ -1074,14 +1164,17 @@ export function NuevaEncomiendaView({
                               }
                             />
                           </div>
-                          <div className="sm:col-span-2">
-                            <LocalidadSectorSelect
-                              idPrefix={`fila-${fila.id}`}
-                              localidades={localidades}
-                              sectores={sectores}
-                              localidadId={fila.destino.localidadId}
-                              sectorId={fila.destino.sectorId}
-                              onChangeLocalidad={(id) => {
+                          <div className="sm:col-span-2 grid gap-1.5">
+                            <Label
+                              htmlFor={`fila-${fila.id}-localidad`}
+                              className="text-xs text-muted-foreground"
+                            >
+                              Localidad
+                            </Label>
+                            <Select
+                              disabled={guardando}
+                              value={fila.destino.localidadId}
+                              onValueChange={(id) => {
                                 const primerSector =
                                   sectores.find((s) => s.localidadId === id)?.id ?? "";
                                 actualizarFila(fila.id, {
@@ -1094,16 +1187,20 @@ export function NuevaEncomiendaView({
                                   },
                                 });
                               }}
-                              onChangeSector={(id) =>
-                                actualizarFila(fila.id, {
-                                  destino: { ...fila.destino, sectorId: id },
-                                })
-                              }
-                            />
-                            {(fila.errores.localidad || fila.errores.sector) && (
-                              <p className="mt-1 text-xs text-destructive">
-                                {fila.errores.localidad || fila.errores.sector}
-                              </p>
+                            >
+                              <SelectTrigger id={`fila-${fila.id}-localidad`} className="w-full">
+                                <SelectValue placeholder="Localidad" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {localidades.map((l) => (
+                                  <SelectItem key={l.id} value={l.id}>
+                                    {l.nombre}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {fila.errores.localidad && (
+                              <p className="mt-1 text-xs text-destructive">{fila.errores.localidad}</p>
                             )}
                           </div>
                         </div>

@@ -29,12 +29,14 @@ import { createClienteAction } from "@/server/actions";
 import type { LocalidadBackend } from "@/types";
 import type { SectorApi } from "@/server/services/sectores";
 
-// El backend real no tiene un solo domicilio-string por cliente: tiene
-// domicilios[] (localidadId + sectorId, mismo modelo de ruteo que
+// El backend real no tiene un solo domicilio-string por cliente: tiene un
+// domicilio propio (localidadId + sectorId, mismo modelo de ruteo que
 // Recorridos/Nueva Encomienda) y separa tipo persona/empresa, documento y
-// cuenta corriente como campos propios del cliente. Este formulario pide UN
-// domicilio al crear (el `esPredeterminado`) — soporte para más de un
-// domicilio por cliente queda para una mejora futura si se necesita.
+// cuenta corriente como campos propios del cliente. Un cliente tiene
+// exactamente UN domicilio (confirmado en vivo 2026-09-11 — antes el
+// backend devolvía `domicilios: DomicilioApi[]`, ahora son campos planos
+// del propio cliente; ver el comentario completo en
+// src/server/services/clientes.ts).
 //
 // Solo alta: confirmado en vivo (2026-09-10) que el backend real no tiene
 // PATCH/PUT/DELETE /clientes/{id} — los tres devuelven el error de ruteo de
@@ -124,16 +126,12 @@ export function ClienteFormDialog({
         documento: draft.documento.trim() || undefined,
         email: draft.email.trim() || undefined,
         esCuentaCorriente: draft.esCuentaCorriente,
-        domicilios: [
-          {
-            localidadId: draft.localidadId,
-            sectorId: draft.sectorId,
-            calle: draft.calle.trim(),
-            numero: draft.numero.trim() || undefined,
-            piso: draft.piso.trim() || undefined,
-            referencia: draft.referencia.trim() || undefined,
-          },
-        ],
+        localidadId: draft.localidadId,
+        sectorId: draft.sectorId,
+        calle: draft.calle.trim(),
+        numero: draft.numero.trim() || undefined,
+        piso: draft.piso.trim() || undefined,
+        referencia: draft.referencia.trim() || undefined,
       });
       toast.success("Cliente creado");
       setOpen(false);

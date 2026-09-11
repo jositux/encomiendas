@@ -18,7 +18,9 @@ import * as recorridosService from "./services/recorridos";
 import * as usuariosService from "./services/usuarios";
 import * as enviosService from "./services/envios";
 import * as clientesService from "./services/clientes";
+import * as seguimientoService from "./services/seguimiento";
 import type { CrearEnvioInput } from "./services/envios";
+import type { SeguimientoResponse } from "./services/seguimiento";
 import { ApiError } from "./api-client";
 import type {
   Encomienda,
@@ -57,15 +59,9 @@ export async function removeEncomiendaAction(id: string) {
 // /clientes/{id} (edicion), solo alta (POST), listado/busqueda (GET) y baja
 // por soft-delete (DELETE, agregada despues — ver removeClienteAction mas
 // abajo). Ver el comentario completo en src/server/services/clientes.ts.
-export async function createClienteAction(data: {
-  tipo: "persona" | "empresa";
-  nombre: string;
-  telefono: string;
-  documento?: string;
-  email?: string;
-  esCuentaCorriente?: boolean;
-  domicilios: Parameters<typeof clientesService.createCliente>[0]["domicilios"];
-}) {
+export async function createClienteAction(
+  data: Parameters<typeof clientesService.createCliente>[0]
+) {
   const item = await clientesService.createCliente(data);
   revalidateAll();
   return item;
@@ -232,6 +228,125 @@ export async function searchClientesAction(q: string) {
 export async function removeClienteAction(id: string) {
   await clientesService.removeCliente(id);
   revalidateAll();
+}
+
+// -- Seguimiento de envío --------------------------------------------------------------
+
+type AccionResultado = { ok: true } | { ok: false; title: string; message: string };
+
+// Toda acción de escritura de este tablero puede recibir un rechazo de
+// negocio esperado del backend (409 ENVIO_EN_REPARTO, 409
+// CONFIRMADOR_ES_ENTREGADOR, 409 TENEDOR_INCORRECTO, 409 ENVIO_CONFIRMADO/
+// ENVIO_NO_ENTREGADO, 403 de otra base) — se atrapa el ApiError y se
+// devuelve como dato en vez de dejarlo cruzar el limite del Server Action,
+// mismo patron que crearEnvioAction (ver bug 9 de
+// claude/plan-integracion-backend.md: si no, Next redacta el mensaje real
+// en produccion).
+async function comoAccionResultado(fn: () => Promise<void>): Promise<AccionResultado> {
+  try {
+    await fn();
+    revalidateAll();
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, title: err.title, message: err.message };
+    }
+    throw err;
+  }
+}
+
+// El texto de busqueda puede ser numero de sistema, remito manual, o guia
+// diaria (letra A-G + digitos, ej. "A17") — el usuario no elige el tipo.
+const RE_GUIA = /^[a-gA-G]\d+$/;
+
+export async function buscarSeguimientoAction(
+  query: string
+): Promise<
+  | { ok: true; data: SeguimientoResponse }
+  | { ok: false; notFound: true }
+  | { ok: false; notFound: false; title: string; message: string }
+> {
+  const texto = query.trim();
+  try {
+    let numero: string;
+    if (RE_GUIA.test(texto)) {
+      const encontrados = await seguimientoService.buscarEnvioPorGuia(texto.toUpperCase());
+      if (encontrados.length === 0) return { ok: false, notFound: true };
+      numero = encontrados[0].numero;
+    } else {
+      numero = texto;
+    }
+    const data = await seguimientoService.getSeguimiento(numero);
+    return { ok: true, data };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      if (err.code === "ENVIO_NO_ENCONTRADO" || err.status === 404) {
+        return { ok: false, notFound: true };
+      }
+      return { ok: false, notFound: false, title: err.title, message: err.message };
+    }
+    throw err;
+  }
+}
+
+export async function refrescarSeguimientoAction(
+  numero: string
+): Promise<
+  | { ok: true; data: SeguimientoResponse }
+  | { ok: false; notFound: true }
+  | { ok: false; notFound: false; title: string; message: string }
+> {
+  return buscarSeguimientoAction(numero);
+}
+
+export async function anularEnvioAction(
+  envioId: string,
+  motivo: string
+): Promise<AccionResultado> {
+  return comoAccionResultado(() => seguimientoService.anularEnvio(envioId, motivo));
+}
+
+export async function corregirSectorEnvioAction(
+  envioId: string,
+  sectorId: string,
+  motivo: string
+): Promise<AccionResultado> {
+  return comoAccionResultado(() =>
+    seguimientoService.corregirSectorEnvio(envioId, sectorId, motivo)
+  );
+}
+
+export async function moverEnvioDePlanillaAction(
+  envioId: string,
+  sectorId: string,
+  motivo: string
+): Promise<AccionResultado> {
+  return comoAccionResultado(() =>
+    seguimientoService.moverEnvioDePlanilla(envioId, sectorId, motivo)
+  );
+}
+
+export async function confirmarEnvioAction(envioNumero: string): Promise<AccionResultado> {
+  return comoAccionResultado(() => seguimientoService.confirmarEnvio(envioNumero));
+}
+
+export async function confirmarEnvioConEntregaAction(data: {
+  envioNumero: string;
+  choferId: string;
+  recibidoPor?: string;
+  documento?: string;
+  observacion?: string;
+}): Promise<AccionResultado> {
+  return comoAccionResultado(() => seguimientoService.confirmarEnvioConEntrega(data));
+}
+
+export async function revertirEntregaEnvioAction(
+  envioNumero: string,
+  motivo: string
+): Promise<AccionResultado> {
+  return comoAccionResultado(() =>
+    seguimientoService.revertirEntregaEnvio(envioNumero, motivo)
+  );
 }
 
 // -- Cajas --------------------------------------------------------------------------

@@ -85,18 +85,15 @@ export function ClientesView({
         id: "domicilio",
         header: "Domicilio",
         cell: ({ row }) => {
-          const d = row.original.domicilios.find((x) => x.esPredeterminado) ?? row.original.domicilios[0];
-          if (!d) return "—";
-          return `${d.calle}${d.numero ? ` ${d.numero}` : ""}`;
+          const c = row.original;
+          if (!c.calle) return "—";
+          return `${c.calle}${c.numero ? ` ${c.numero}` : ""}`;
         },
       },
       {
         id: "localidad",
         header: "Localidad",
-        cell: ({ row }) => {
-          const d = row.original.domicilios.find((x) => x.esPredeterminado) ?? row.original.domicilios[0];
-          return localidadNombre(d?.localidadId);
-        },
+        cell: ({ row }) => localidadNombre(row.original.localidadId),
       },
       {
         id: "ctaCte",

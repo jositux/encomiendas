@@ -17,6 +17,7 @@ import {
   UserRound,
   Map,
   CreditCard,
+  Search,
 } from "lucide-react";
 
 export interface NavItem {
@@ -52,6 +53,12 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/encomiendas/nueva",
         icon: PackagePlus,
         description: "Alta de un nuevo envío",
+      },
+      {
+        title: "Seguimiento",
+        href: "/seguimiento",
+        icon: Search,
+        description: "Buscar un envío por número, remito o guía y ver su historia",
       },
     ],
   },
