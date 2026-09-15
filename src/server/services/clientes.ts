@@ -137,6 +137,39 @@ export async function removeCliente(id: string): Promise<void> {
   await apiFetch<void>(`/clientes/${id}`, { method: "DELETE", token });
 }
 
+// Edicion (PATCH): el backend agrego este endpoint despues del chequeo en
+// vivo del 2026-09-10/11 documentado arriba (en ese momento PATCH/PUT
+// devolvian el error de ruteo de Nest "Cannot PATCH /clientes/{id}").
+// Mismo shape que createCliente (todos los campos de nuevo, no solo los
+// que cambian) hasta confirmar en vivo si el backend acepta un PATCH
+// parcial o exige el objeto completo.
+export interface ActualizarClienteInput {
+  tipo: "persona" | "empresa";
+  nombre: string;
+  telefono: string;
+  documento?: string;
+  email?: string;
+  esCuentaCorriente?: boolean;
+  localidadId: string;
+  sectorId: string;
+  calle: string;
+  numero?: string;
+  piso?: string;
+  referencia?: string;
+}
+
+export async function actualizarCliente(
+  id: string,
+  data: ActualizarClienteInput
+): Promise<ClienteApi> {
+  const token = await requireToken();
+  return apiFetch<ClienteApi>(`/clientes/${id}`, {
+    method: "PATCH",
+    token,
+    body: data,
+  });
+}
+
 // Atajo para Nueva Encomienda: cuando el remitente no vino de
 // ClienteQuickPick (el usuario tipeo nombre/telefono a mano), tratamos de
 // asociarlo a un Cliente real en vez de dejarlo como value object suelto —

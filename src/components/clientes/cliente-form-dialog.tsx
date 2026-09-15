@@ -25,9 +25,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LocalidadSectorSelect } from "@/components/shared/localidad-sector-select";
-import { createClienteAction } from "@/server/actions";
+import { createClienteAction, actualizarClienteAction } from "@/server/actions";
 import type { LocalidadBackend } from "@/types";
 import type { SectorApi } from "@/server/services/sectores";
+import type { ClienteApi } from "@/server/services/clientes";
 
 // El backend real no tiene un solo domicilio-string por cliente: tiene un
 // domicilio propio (localidadId + sectorId, mismo modelo de ruteo que
@@ -38,12 +39,13 @@ import type { SectorApi } from "@/server/services/sectores";
 // del propio cliente; ver el comentario completo en
 // src/server/services/clientes.ts).
 //
-// Solo alta: confirmado en vivo (2026-09-10) que el backend real no tiene
-// PATCH/PUT/DELETE /clientes/{id} — los tres devuelven el error de ruteo de
-// Nest "Cannot <VERBO> /clientes/{id}", no un error de validación (ver el
-// comentario completo en src/server/services/clientes.ts). Por eso este
-// diálogo no tiene modo edición: solo crea clientes nuevos, hasta que el
-// backend agregue esos endpoints.
+// Alta Y edición: el backend confirmó (2026-09-15) que ya existe
+// PATCH /clientes/{id} — antes (2026-09-10) los tres verbos de escritura
+// que no fueran POST devolvían el error de ruteo de Nest
+// "Cannot <VERBO> /clientes/{id}" (ver el comentario completo en
+// src/server/services/clientes.ts). Este diálogo ahora sirve para las dos
+// cosas: sin prop `cliente` crea, con `cliente` edita (mismo formulario,
+// precargado con sus datos).
 type Draft = {
   tipo: "persona" | "empresa";
   nombre: string;
@@ -80,26 +82,57 @@ function emptyDraft(localidades: LocalidadBackend[], sectores: SectorApi[]): Dra
   };
 }
 
+function draftFromCliente(cliente: ClienteApi): Draft {
+  return {
+    tipo: cliente.tipo,
+    nombre: cliente.nombre,
+    telefono: cliente.telefono,
+    documento: cliente.documento ?? "",
+    email: cliente.email ?? "",
+    esCuentaCorriente: cliente.esCuentaCorriente,
+    calle: cliente.calle,
+    numero: cliente.numero ?? "",
+    piso: cliente.piso ?? "",
+    referencia: cliente.referencia ?? "",
+    localidadId: cliente.localidadId,
+    sectorId: cliente.sectorId,
+  };
+}
+
 export function ClienteFormDialog({
   localidades,
   sectores,
   trigger,
+  cliente,
+  open: openControlled,
+  onOpenChange: onOpenChangeControlled,
 }: {
   localidades: LocalidadBackend[];
   sectores: SectorApi[];
   trigger?: React.ReactNode;
+  // Con `cliente`, el diálogo edita ese cliente en vez de crear uno nuevo.
+  cliente?: ClienteApi;
+  // Uso controlado (sin trigger propio, ej. desde el botón de editar de la
+  // tabla): quien lo usa maneja el estado de apertura.
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpenState] = React.useState(false);
-  const [draft, setDraft] = React.useState<Draft>(emptyDraft(localidades, sectores));
+  const esEdicion = !!cliente;
+  const [openUncontrolled, setOpenUncontrolled] = React.useState(false);
+  const open = openControlled ?? openUncontrolled;
+  const [draft, setDraft] = React.useState<Draft>(
+    cliente ? draftFromCliente(cliente) : emptyDraft(localidades, sectores)
+  );
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [submitting, setSubmitting] = React.useState(false);
 
   function setOpen(next: boolean) {
     if (next) {
-      setDraft(emptyDraft(localidades, sectores));
+      setDraft(cliente ? draftFromCliente(cliente) : emptyDraft(localidades, sectores));
       setErrors({});
     }
-    setOpenState(next);
+    onOpenChangeControlled?.(next);
+    setOpenUncontrolled(next);
   }
 
   function validate() {
@@ -117,23 +150,30 @@ export function ClienteFormDialog({
     e.preventDefault();
     if (!validate()) return;
 
+    const payload = {
+      tipo: draft.tipo,
+      nombre: draft.nombre.trim(),
+      telefono: draft.telefono.trim(),
+      documento: draft.documento.trim() || undefined,
+      email: draft.email.trim() || undefined,
+      esCuentaCorriente: draft.esCuentaCorriente,
+      localidadId: draft.localidadId,
+      sectorId: draft.sectorId,
+      calle: draft.calle.trim(),
+      numero: draft.numero.trim() || undefined,
+      piso: draft.piso.trim() || undefined,
+      referencia: draft.referencia.trim() || undefined,
+    };
+
     setSubmitting(true);
     try {
-      await createClienteAction({
-        tipo: draft.tipo,
-        nombre: draft.nombre.trim(),
-        telefono: draft.telefono.trim(),
-        documento: draft.documento.trim() || undefined,
-        email: draft.email.trim() || undefined,
-        esCuentaCorriente: draft.esCuentaCorriente,
-        localidadId: draft.localidadId,
-        sectorId: draft.sectorId,
-        calle: draft.calle.trim(),
-        numero: draft.numero.trim() || undefined,
-        piso: draft.piso.trim() || undefined,
-        referencia: draft.referencia.trim() || undefined,
-      });
-      toast.success("Cliente creado");
+      if (esEdicion && cliente) {
+        await actualizarClienteAction(cliente.id, payload);
+        toast.success("Cliente actualizado");
+      } else {
+        await createClienteAction(payload);
+        toast.success("Cliente creado");
+      }
       setOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo guardar el cliente.");
@@ -144,18 +184,22 @@ export function ClienteFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button className="gap-1.5">
-            <UserPlus2 className="size-4" /> Nuevo cliente
-          </Button>
-        )}
-      </DialogTrigger>
+      {openControlled === undefined && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button className="gap-1.5">
+              <UserPlus2 className="size-4" /> Nuevo cliente
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nuevo cliente</DialogTitle>
+          <DialogTitle>{esEdicion ? "Editar cliente" : "Nuevo cliente"}</DialogTitle>
           <DialogDescription>
-            Datos de contacto para asociar a sus encomiendas.
+            {esEdicion
+              ? "Actualizá los datos de contacto y domicilio."
+              : "Datos de contacto para asociar a sus encomiendas."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
@@ -283,7 +327,7 @@ export function ClienteFormDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={submitting}>
-              Crear cliente
+              {esEdicion ? "Guardar cambios" : "Crear cliente"}
             </Button>
           </DialogFooter>
         </form>

@@ -55,14 +55,24 @@ export async function removeEncomiendaAction(id: string) {
 
 // -- Clientes -------------------------------------------------------------------
 
-// No hay updateClienteAction: el backend real sigue sin PATCH/PUT
-// /clientes/{id} (edicion), solo alta (POST), listado/busqueda (GET) y baja
-// por soft-delete (DELETE, agregada despues — ver removeClienteAction mas
-// abajo). Ver el comentario completo en src/server/services/clientes.ts.
+// updateClienteAction: agregado 2026-09-15, backend confirmo que ya existe
+// PATCH /clientes/{id} (antes no — ver el comentario completo en
+// src/server/services/clientes.ts). Ademas de alta (POST) y
+// listado/busqueda (GET) sigue existiendo la baja por soft-delete (DELETE
+// — ver removeClienteAction mas abajo).
 export async function createClienteAction(
   data: Parameters<typeof clientesService.createCliente>[0]
 ) {
   const item = await clientesService.createCliente(data);
+  revalidateAll();
+  return item;
+}
+
+export async function actualizarClienteAction(
+  id: string,
+  data: clientesService.ActualizarClienteInput
+) {
+  const item = await clientesService.actualizarCliente(id, data);
   revalidateAll();
   return item;
 }

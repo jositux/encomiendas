@@ -1,7 +1,7 @@
 import { getSession } from "@/server/session";
 import { listLocalidades } from "@/server/services/localidades";
 import { listSectores } from "@/server/services/sectores";
-import { listUsuarios } from "@/server/services/usuarios";
+import { listUsuarios, type UsuarioApi } from "@/server/services/usuarios";
 import { listEnvios } from "@/server/services/envios";
 import { SeguimientoView } from "./seguimiento-view";
 
@@ -16,12 +16,36 @@ import { SeguimientoView } from "./seguimiento-view";
 // patrón que el panel "Envíos recientes" de Nueva Encomienda) para mostrar
 // los envíos más recientes como punto de partida, elegibles con un click
 // para ver su seguimiento completo sin tener que saber el número de memoria.
+//
+// 2026-09-15: reportado por backend — un operador sin permiso para listar
+// todos los usuarios recibe 403 en GET /usuarios, y como esta llamada
+// estaba en el mismo Promise.all que arma la página, un 403 acá tiraba
+// abajo TODA la pantalla de Seguimiento para ese rol (error de Server
+// Components sin detalle en producción, "Minified React error #441").
+// El nombre de quien hizo cada evento ya viene en la respuesta de
+// /envios/{numero}/seguimiento (responsable.nombre) — no depende de esto.
+// Lo único que de verdad usa `usuarios` acá es el selector de chofer del
+// diálogo "Registrar entrega y confirmar" (ver seguimiento-view.tsx). Por
+// eso esta llamada ahora es best-effort: si falla (403 u otra cosa), la
+// pantalla igual carga y ese selector queda vacío en vez de romper todo.
+async function listUsuariosSeguro(): Promise<UsuarioApi[]> {
+  try {
+    return await listUsuarios();
+  } catch (err) {
+    console.error(
+      "Seguimiento: no se pudo cargar GET /usuarios (se sigue sin la lista de choferes, el resto de la pantalla funciona igual):",
+      err
+    );
+    return [];
+  }
+}
+
 export default async function SeguimientoPage() {
   const [session, localidades, sectores, usuarios, envios] = await Promise.all([
     getSession(),
     listLocalidades(),
     listSectores(),
-    listUsuarios(),
+    listUsuariosSeguro(),
     listEnvios({ limite: 20 }),
   ]);
 

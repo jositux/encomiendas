@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Landmark, Phone, Building2, User, Trash2 } from "lucide-react";
+import { Landmark, Phone, Building2, User, Trash2, Pencil } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
@@ -16,12 +16,11 @@ import type { ClienteApi } from "@/server/services/clientes";
 import type { LocalidadBackend } from "@/types";
 import type { SectorApi } from "@/server/services/sectores";
 
-// Sigue sin edición: el backend no tiene PATCH/PUT /clientes/{id} (ver el
-// comentario completo en src/server/services/clientes.ts y en
-// cliente-form-dialog.tsx). La baja sí existe como soft-delete (DELETE,
-// agregada después de que se escribió el comentario original de este
-// archivo) — el backend lo marca como eliminado y GET /clientes deja de
-// devolverlo.
+// Edición agregada 2026-09-15: el backend ya tiene PATCH /clientes/{id}
+// (ver el comentario completo en src/server/services/clientes.ts y en
+// cliente-form-dialog.tsx, que ahora hace de doble uso alta/edición). La
+// baja sigue siendo soft-delete (DELETE) — el backend lo marca como
+// eliminado y GET /clientes deja de devolverlo.
 export function ClientesView({
   clientes,
   localidades,
@@ -33,6 +32,7 @@ export function ClientesView({
 }) {
   const [soloCtaCte, setSoloCtaCte] = React.useState(false);
   const [toDelete, setToDelete] = React.useState<ClienteApi | null>(null);
+  const [toEdit, setToEdit] = React.useState<ClienteApi | null>(null);
 
   async function confirmDelete() {
     if (!toDelete) return;
@@ -115,6 +115,14 @@ export function ClientesView({
             <Button
               variant="ghost"
               size="icon"
+              className="size-7"
+              onClick={() => setToEdit(row.original)}
+            >
+              <Pencil className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               className="size-7 text-destructive hover:text-destructive"
               onClick={() => setToDelete(row.original)}
             >
@@ -161,6 +169,16 @@ export function ClientesView({
         confirmLabel="Eliminar"
         onConfirm={confirmDelete}
       />
+
+      {toEdit && (
+        <ClienteFormDialog
+          localidades={localidades}
+          sectores={sectores}
+          cliente={toEdit}
+          open={!!toEdit}
+          onOpenChange={(v) => !v && setToEdit(null)}
+        />
+      )}
     </div>
   );
 }
