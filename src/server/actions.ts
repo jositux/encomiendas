@@ -19,7 +19,7 @@ import * as usuariosService from "./services/usuarios";
 import * as enviosService from "./services/envios";
 import * as clientesService from "./services/clientes";
 import * as seguimientoService from "./services/seguimiento";
-import type { CrearEnvioInput } from "./services/envios";
+import type { CrearEnvioInput, ActualizarEnvioInput } from "./services/envios";
 import type { SeguimientoResponse } from "./services/seguimiento";
 import { ApiError } from "./api-client";
 import type {
@@ -211,6 +211,29 @@ export async function crearEnvioAction(
 
   try {
     const item = await enviosService.crearEnvio({ ...data, remitente });
+    revalidateAll();
+    return { ok: true, envio: item };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, title: err.title, message: err.message };
+    }
+    throw err;
+  }
+}
+
+// PATCH /envios/:id — cambia lo justo y necesario para que "Editar" en
+// Carga rapida corrija de verdad el envio ya creado en vez de crear uno
+// duplicado (ver claude/plan-integracion-backend.md, seccion 14). Mismo
+// patron de resultado que crearEnvioAction: {ok:false, title, message} para
+// un rechazo de negocio del backend (ej. 400 sin clientUuid, aunque esta
+// accion siempre lo manda; o 409 CLIENT_UUID_REUTILIZADO si algun dia se
+// reintenta a mano con el mismo uuid) en vez de una excepcion sin manejar.
+export async function actualizarEnvioAction(
+  id: string,
+  data: ActualizarEnvioInput
+): Promise<{ ok: true; envio: Awaited<ReturnType<typeof enviosService.actualizarEnvio>> } | { ok: false; title: string; message: string }> {
+  try {
+    const item = await enviosService.actualizarEnvio(id, data);
     revalidateAll();
     return { ok: true, envio: item };
   } catch (err) {

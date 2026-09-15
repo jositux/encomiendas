@@ -15,6 +15,7 @@ import {
   Phone,
   GripVertical,
   Pencil,
+  Printer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,7 +41,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { crearEnvioAction } from "@/server/actions";
+import { crearEnvioAction, actualizarEnvioAction } from "@/server/actions";
 import type {
   CrearEnvioInput,
   EnvioApi,
@@ -73,6 +74,13 @@ interface OrigenState {
   nombre: string;
   telefono: string;
   clienteId?: string;
+  // Domicilio y localidad propia del remitente — changelog 2026-09-15,
+  // opcionales (antes ni existian). Espejan a DestinoState.
+  calle: string;
+  numero: string;
+  piso: string;
+  referencia: string;
+  localidadId: string;
 }
 
 interface DestinoState {
@@ -89,7 +97,7 @@ interface DestinoState {
 }
 
 function emptyOrigen(): OrigenState {
-  return { nombre: "", telefono: "" };
+  return { nombre: "", telefono: "", calle: "", numero: "", piso: "", referencia: "", localidadId: "" };
 }
 
 function emptyDestino(localidades: LocalidadBackend[], sectores: SectorApi[]): DestinoState {
@@ -130,10 +138,33 @@ interface FilaDestino {
   flete: number | "";
   montoCrr: number | "";
   remitoManual: string;
+  // Campos nuevos del changelog 2026-09-15 — opcionales.
+  valorDeclarado: number | "";
+  gasto: number | "";
+  observaciones: string;
   status: EstadoFila;
   resultado?: EnvioApi;
   errorMsg?: string;
   errores: Record<string, string>;
+  // Snapshot tomado justo antes de entrar en "Editar" sobre una fila ya
+  // guardada (fila.resultado existente) — permite que "Cancelar" restaure
+  // los valores previos en vez de simplemente borrar la fila (que además de
+  // perder los cambios sin guardar, hacía desaparecer del todo un envío que
+  // sigue existiendo en el backend). No se usa en filas nunca guardadas.
+  previo?: Pick<
+    FilaDestino,
+    | "destino"
+    | "tipo"
+    | "lugarPago"
+    | "formaPago"
+    | "bultos"
+    | "flete"
+    | "montoCrr"
+    | "remitoManual"
+    | "valorDeclarado"
+    | "gasto"
+    | "observaciones"
+  >;
 }
 
 function nuevaFilaId(): string {
@@ -159,6 +190,9 @@ function filaEnBlanco(
     flete: heredarDe?.flete ?? "",
     montoCrr: "",
     remitoManual: "",
+    valorDeclarado: "",
+    gasto: "",
+    observaciones: "",
     status: "editando",
     errores: {},
   };
@@ -221,6 +255,9 @@ export function NuevaEncomiendaView({
   const [flete, setFlete] = React.useState<number | "">("");
   const [montoCrr, setMontoCrr] = React.useState<number | "">("");
   const [remitoManual, setRemitoManual] = React.useState("");
+  const [valorDeclarado, setValorDeclarado] = React.useState<number | "">("");
+  const [gasto, setGasto] = React.useState<number | "">("");
+  const [observaciones, setObservaciones] = React.useState("");
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [submitting, setSubmitting] = React.useState(false);
   const [cargados, setCargados] = React.useState<EnvioApi[]>(envios);
@@ -273,6 +310,9 @@ export function NuevaEncomiendaView({
     setFlete("");
     setMontoCrr("");
     setRemitoManual("");
+    setValorDeclarado("");
+    setGasto("");
+    setObservaciones("");
     setErrors({});
   }
 
@@ -290,6 +330,11 @@ export function NuevaEncomiendaView({
           nombre: origen.nombre.trim(),
           telefono: origen.telefono.trim(),
           clienteId: origen.clienteId,
+          calle: origen.calle.trim() || undefined,
+          numero: origen.numero.trim() || undefined,
+          piso: origen.piso.trim() || undefined,
+          referencia: origen.referencia.trim() || undefined,
+          localidadId: origen.localidadId || undefined,
         },
         destinatario: {
           nombre: destino.nombre.trim(),
@@ -310,6 +355,9 @@ export function NuevaEncomiendaView({
         formaPago,
         contrarreembolsoImporte: tipo === "efectivo" ? Number(montoCrr) : undefined,
         remitoManualNumero: remitoManual.trim() || undefined,
+        valorDeclarado: valorDeclarado === "" ? undefined : Number(valorDeclarado),
+        gasto: gasto === "" ? undefined : Number(gasto),
+        observaciones: observaciones.trim() || undefined,
       };
       const resultado = await crearEnvioAction(data);
       if (!resultado.ok) {
@@ -381,12 +429,24 @@ export function NuevaEncomiendaView({
     }
 
     actualizarFila(id, { status: "guardando", errores: {} });
+    // Si esta fila ya tiene un envio guardado (fila.resultado), "Editar" +
+    // "Guardar" tiene que CORREGIR ese mismo envio via PATCH, no crear uno
+    // nuevo por POST — antes de este cambio, volver a guardar una fila ya
+    // guardada dejaba un envio duplicado (ver claude/plan-integracion-backend.md,
+    // seccion 14). Se distingue por la presencia de fila.resultado, que solo
+    // se setea la primera vez que la fila se guarda con exito.
+    const esEdicion = !!fila.resultado;
     try {
-      const data: CrearEnvioInput = {
+      const datosComunes = {
         remitente: {
           nombre: origen.nombre.trim(),
           telefono: origen.telefono.trim(),
           clienteId: origen.clienteId,
+          calle: origen.calle.trim() || undefined,
+          numero: origen.numero.trim() || undefined,
+          piso: origen.piso.trim() || undefined,
+          referencia: origen.referencia.trim() || undefined,
+          localidadId: origen.localidadId || undefined,
         },
         destinatario: {
           nombre: fila.destino.nombre.trim(),
@@ -407,17 +467,31 @@ export function NuevaEncomiendaView({
         formaPago: fila.formaPago,
         contrarreembolsoImporte: fila.tipo === "efectivo" ? Number(fila.montoCrr) : undefined,
         remitoManualNumero: fila.remitoManual.trim() || undefined,
+        valorDeclarado: fila.valorDeclarado === "" ? undefined : Number(fila.valorDeclarado),
+        gasto: fila.gasto === "" ? undefined : Number(fila.gasto),
+        observaciones: fila.observaciones.trim() || undefined,
       };
-      const resultado = await crearEnvioAction(data);
+
+      const resultado = esEdicion
+        ? await actualizarEnvioAction(fila.resultado!.id, datosComunes)
+        : await crearEnvioAction(datosComunes as CrearEnvioInput);
+
       if (!resultado.ok) {
         const msg = resultado.title || resultado.message;
         actualizarFila(id, { status: "error", errorMsg: msg });
         toast.error(msg);
         return;
       }
-      setCargados((prev) => [resultado.envio, ...prev]);
+      if (esEdicion) {
+        setCargados((prev) =>
+          prev.map((e) => (e.id === resultado.envio.id ? resultado.envio : e))
+        );
+        toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} corregida correctamente`);
+      } else {
+        setCargados((prev) => [resultado.envio, ...prev]);
+        toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} cargada correctamente`);
+      }
       actualizarFila(id, { status: "ok", resultado: resultado.envio, errorMsg: undefined });
-      toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} cargada correctamente`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "No se pudo cargar este destino.";
       actualizarFila(id, { status: "error", errorMsg: msg });
@@ -501,7 +575,16 @@ export function NuevaEncomiendaView({
                         value={origen.nombre}
                         onChange={(v) => setOrigen({ ...origen, nombre: v, clienteId: undefined })}
                         onSelectCliente={(c) =>
-                          setOrigen({ nombre: c.nombre, telefono: c.telefono, clienteId: c.id })
+                          setOrigen({
+                            nombre: c.nombre,
+                            telefono: c.telefono,
+                            clienteId: c.id,
+                            calle: c.calle ?? "",
+                            numero: c.numero ?? "",
+                            piso: c.piso ?? "",
+                            referencia: c.referencia ?? "",
+                            localidadId: c.localidadId ?? origen.localidadId,
+                          })
                         }
                         placeholder="Nombre — buscá por nombre o cargá uno nuevo"
                         ariaInvalid={!!errors.origenNombre}
@@ -519,6 +602,75 @@ export function NuevaEncomiendaView({
                         value={origen.telefono}
                         onChange={(e) => setOrigen({ ...origen, telefono: e.target.value })}
                       />
+                    </div>
+                  </div>
+
+                  {/* Domicilio de origen — opcional (changelog 2026-09-15): antes
+                      del alta no existía forma de cargarlo, así que sigue sin ser
+                      obligatorio para no romper el flujo cuando el remitente es
+                      simplemente "el mostrador" y no hace falta domicilio propio. */}
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="origen-calle" className="text-xs text-muted-foreground">
+                        Calle (opcional)
+                      </Label>
+                      <Input
+                        id="origen-calle"
+                        value={origen.calle}
+                        onChange={(e) => setOrigen({ ...origen, calle: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="origen-numero" className="text-xs text-muted-foreground">
+                          Número
+                        </Label>
+                        <Input
+                          id="origen-numero"
+                          value={origen.numero}
+                          onChange={(e) => setOrigen({ ...origen, numero: e.target.value })}
+                        />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="origen-piso" className="text-xs text-muted-foreground">
+                          Piso/Depto
+                        </Label>
+                        <Input
+                          id="origen-piso"
+                          value={origen.piso}
+                          onChange={(e) => setOrigen({ ...origen, piso: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-1.5 sm:col-span-2">
+                      <Label htmlFor="origen-referencia" className="text-xs text-muted-foreground">
+                        Referencia (opcional)
+                      </Label>
+                      <Input
+                        id="origen-referencia"
+                        value={origen.referencia}
+                        onChange={(e) => setOrigen({ ...origen, referencia: e.target.value })}
+                      />
+                    </div>
+                    <div className="sm:col-span-2 grid gap-1.5">
+                      <Label htmlFor="origen-localidad" className="text-xs text-muted-foreground">
+                        Localidad de origen (opcional)
+                      </Label>
+                      <Select
+                        value={origen.localidadId}
+                        onValueChange={(id) => setOrigen({ ...origen, localidadId: id })}
+                      >
+                        <SelectTrigger id="origen-localidad" className="w-full">
+                          <SelectValue placeholder="Sin especificar" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {localidades.map((l) => (
+                            <SelectItem key={l.id} value={l.id}>
+                              {l.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
@@ -769,6 +921,54 @@ export function NuevaEncomiendaView({
                   </div>
                 </div>
 
+                {/* Campos nuevos del changelog 2026-09-15, opcionales. "gasto"
+                    mantiene el nombre viejo del backend — en la práctica es el
+                    monto cobrado por billetera virtual/digital. */}
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="valor-declarado" className="text-xs text-muted-foreground">
+                      Valor declarado ($, opcional)
+                    </Label>
+                    <Input
+                      id="valor-declarado"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={valorDeclarado}
+                      onChange={(e) => {
+                        const cleaned = sanitizeMoneyInput(e.target.value);
+                        setValorDeclarado(cleaned === "" ? "" : Math.max(0, Number(cleaned)));
+                      }}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="gasto" className="text-xs text-muted-foreground">
+                      Pago con billetera/digital ($, opcional)
+                    </Label>
+                    <Input
+                      id="gasto"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={gasto}
+                      onChange={(e) => {
+                        const cleaned = sanitizeMoneyInput(e.target.value);
+                        setGasto(cleaned === "" ? "" : Math.max(0, Number(cleaned)));
+                      }}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="observaciones" className="text-xs text-muted-foreground">
+                      Observaciones / contenido (opcional)
+                    </Label>
+                    <Input
+                      id="observaciones"
+                      value={observaciones}
+                      onChange={(e) => setObservaciones(e.target.value)}
+                    />
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-end gap-2 border-t pt-4">
                   <Button type="button" variant="outline" onClick={resetForm}>
                     Limpiar
@@ -797,7 +997,16 @@ export function NuevaEncomiendaView({
                         value={origen.nombre}
                         onChange={(v) => setOrigen({ ...origen, nombre: v, clienteId: undefined })}
                         onSelectCliente={(c) => {
-                          setOrigen({ nombre: c.nombre, telefono: c.telefono, clienteId: c.id });
+                          setOrigen({
+                            nombre: c.nombre,
+                            telefono: c.telefono,
+                            clienteId: c.id,
+                            calle: c.calle ?? "",
+                            numero: c.numero ?? "",
+                            piso: c.piso ?? "",
+                            referencia: c.referencia ?? "",
+                            localidadId: c.localidadId ?? origen.localidadId,
+                          });
                           setRemitenteConfirmado(true);
                         }}
                         placeholder="Nombre — buscá por nombre o cargá uno nuevo"
@@ -811,6 +1020,63 @@ export function NuevaEncomiendaView({
                       />
                     </div>
                   </div>
+
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      Domicilio de origen (opcional)
+                    </summary>
+                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs text-muted-foreground">Calle</Label>
+                        <Input
+                          value={origen.calle}
+                          onChange={(e) => setOrigen({ ...origen, calle: e.target.value })}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="grid gap-1.5">
+                          <Label className="text-xs text-muted-foreground">Número</Label>
+                          <Input
+                            value={origen.numero}
+                            onChange={(e) => setOrigen({ ...origen, numero: e.target.value })}
+                          />
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label className="text-xs text-muted-foreground">Piso/Depto</Label>
+                          <Input
+                            value={origen.piso}
+                            onChange={(e) => setOrigen({ ...origen, piso: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-1.5 sm:col-span-2">
+                        <Label className="text-xs text-muted-foreground">Referencia</Label>
+                        <Input
+                          value={origen.referencia}
+                          onChange={(e) => setOrigen({ ...origen, referencia: e.target.value })}
+                        />
+                      </div>
+                      <div className="sm:col-span-2 grid gap-1.5">
+                        <Label className="text-xs text-muted-foreground">Localidad de origen</Label>
+                        <Select
+                          value={origen.localidadId}
+                          onValueChange={(id) => setOrigen({ ...origen, localidadId: id })}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Sin especificar" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {localidades.map((l) => (
+                              <SelectItem key={l.id} value={l.id}>
+                                {l.nombre}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </details>
+
                   <p className="text-xs text-muted-foreground">
                     Este remitente queda fijo para todos los destinos que agregues abajo — cada
                     destino se carga como un envío propio.
@@ -942,7 +1208,24 @@ export function NuevaEncomiendaView({
                           variant="ghost"
                           size="sm"
                           className="gap-1.5 text-muted-foreground"
-                          onClick={() => actualizarFila(fila.id, { status: "editando" })}
+                          onClick={() =>
+                            actualizarFila(fila.id, {
+                              status: "editando",
+                              previo: {
+                                destino: fila.destino,
+                                tipo: fila.tipo,
+                                lugarPago: fila.lugarPago,
+                                formaPago: fila.formaPago,
+                                bultos: fila.bultos,
+                                flete: fila.flete,
+                                montoCrr: fila.montoCrr,
+                                remitoManual: fila.remitoManual,
+                                valorDeclarado: fila.valorDeclarado,
+                                gasto: fila.gasto,
+                                observaciones: fila.observaciones,
+                              },
+                            })
+                          }
                         >
                           <Pencil className="size-3.5" />
                           Editar
@@ -1057,7 +1340,11 @@ export function NuevaEncomiendaView({
                           >
                             <GripVertical className="size-4" />
                           </button>
-                          <p className="text-sm font-semibold">Destino</p>
+                          <p className="text-sm font-semibold">
+                            {fila.resultado
+                              ? `Corrigiendo envío #${guiaDeEnvio(fila.resultado)}`
+                              : "Destino"}
+                          </p>
                         </div>
 
                         <div className="grid gap-3 sm:grid-cols-2">
@@ -1335,13 +1622,82 @@ export function NuevaEncomiendaView({
                           </div>
                         )}
 
+                        <details className="text-xs">
+                          <summary className="cursor-pointer text-muted-foreground">
+                            Más datos (opcional)
+                          </summary>
+                          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+                            <div className="grid gap-1.5">
+                              <Label className="text-xs text-muted-foreground">
+                                Valor declarado ($)
+                              </Label>
+                              <Input
+                                disabled={guardando}
+                                type="text"
+                                inputMode="decimal"
+                                value={fila.valorDeclarado}
+                                onChange={(e) => {
+                                  const cleaned = sanitizeMoneyInput(e.target.value);
+                                  actualizarFila(fila.id, {
+                                    valorDeclarado: cleaned === "" ? "" : Math.max(0, Number(cleaned)),
+                                  });
+                                }}
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label className="text-xs text-muted-foreground">
+                                Pago billetera/digital ($)
+                              </Label>
+                              <Input
+                                disabled={guardando}
+                                type="text"
+                                inputMode="decimal"
+                                value={fila.gasto}
+                                onChange={(e) => {
+                                  const cleaned = sanitizeMoneyInput(e.target.value);
+                                  actualizarFila(fila.id, {
+                                    gasto: cleaned === "" ? "" : Math.max(0, Number(cleaned)),
+                                  });
+                                }}
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label className="text-xs text-muted-foreground">
+                                Observaciones / contenido
+                              </Label>
+                              <Input
+                                disabled={guardando}
+                                value={fila.observaciones}
+                                onChange={(e) =>
+                                  actualizarFila(fila.id, { observaciones: e.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+                        </details>
+
                         <div className="flex items-center justify-end gap-2">
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
                             disabled={guardando}
-                            onClick={() => quitarFila(fila.id)}
+                            onClick={() => {
+                              if (fila.resultado && fila.previo) {
+                                // Ya estaba guardada: "Cancelar" descarta los
+                                // cambios sin enviar y vuelve a la tarjeta
+                                // verde, no borra el envío (que sigue
+                                // existiendo en el backend).
+                                actualizarFila(fila.id, {
+                                  ...fila.previo,
+                                  status: "ok",
+                                  previo: undefined,
+                                  errores: {},
+                                });
+                              } else {
+                                quitarFila(fila.id);
+                              }
+                            }}
                           >
                             Cancelar
                           </Button>
@@ -1353,7 +1709,7 @@ export function NuevaEncomiendaView({
                             onClick={() => guardarFila(fila.id)}
                           >
                             {guardando && <Loader2 className="size-3.5 animate-spin" />}
-                            Guardar destino
+                            {fila.resultado ? "Guardar corrección" : "Guardar destino"}
                           </Button>
                         </div>
                       </CardContent>
@@ -1403,6 +1759,14 @@ export function NuevaEncomiendaView({
                   <p className="mt-1.5 truncate text-xs text-muted-foreground">
                     {e.remitenteNombre ?? "—"} → {e.destinatarioNombre ?? "—"}
                   </p>
+                  <a
+                    href={`/remito/${encodeURIComponent(e.numero)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                  >
+                    <Printer className="size-3.5" /> Imprimir remito
+                  </a>
                 </div>
               ))}
             </div>

@@ -46,7 +46,20 @@ export type TipoEvento =
   | "confirmacion"
   | "anulacion"
   | "correccion_sector"
-  | "reversion_entrega";
+  | "reversion_entrega"
+  // Nuevo (changelog backend 2026-09-15): cada PATCH /envios/:id que
+  // cambia algo deja uno de estos en el ledger (append-only, sin
+  // UPDATE/DELETE posible ni para el backend). No transiciona estado ni
+  // custodia. `detalle.cambios` viene como
+  // { columna: { antes, despues }, ... } (valores numeric como string,
+  // nunca float) — la propia `evento.frase` ya trae la oración armada
+  // ("Flete corregido de 10000.00 a 8000.00 por Ana"), así que no hace
+  // falta reconstruir nada a mano para el resumen de una línea. Todavía
+  // no hay forma de generar uno de estos en vivo desde este frontend: el
+  // único PATCH /envios/:id real lo va a hacer la futura edición real vía
+  // Carga rápida (bug 10 punto 5 / changelog en el plan de integración),
+  // que a la fecha de este comentario sigue sin implementarse.
+  | "modificacion";
 
 export interface EventoSeguimiento {
   id: string;

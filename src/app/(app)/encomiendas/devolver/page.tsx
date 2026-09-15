@@ -1,10 +1,9 @@
-import { getEncomiendas } from "@/server/db";
-import { DevolverView } from "./devolver-view";
+import { redirect } from "next/navigation";
 
-export default async function DevolverPage() {
-  const encomiendas = await getEncomiendas();
-  const candidatas = encomiendas.filter(
-    (e) => e.estado === "EN_TRANSITO" || e.estado === "PARA_ENTREGAR"
-  );
-  return <DevolverView candidatas={candidatas} />;
+// "Devolver" se consolidó dentro de "Depósito" (una pestaña ahí), junto con
+// Recepción, Designaciones, Devolver, Encomiendas activas y Pendientes. Se
+// deja este redirect en vez de borrar la ruta por si algo todavía apunta al
+// link viejo.
+export default function DevolverPage() {
+  redirect("/deposito");
 }

@@ -34,10 +34,19 @@ export function EncomiendaDetailSheet({
   encomienda,
   open,
   onOpenChange,
+  sucursalId,
 }: {
   encomienda: Encomienda | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  // Sucursal del usuario que está operando la pantalla (session.puntoId).
+  // Se usa solo en la transición EN_TRANSITO -> PARA_ENTREGAR ("Recibir en
+  // destino"), para que la encomienda quede registrada en la sucursal que
+  // la recibió — mismo comportamiento que tenía la pantalla de Recepción
+  // antes de consolidarse en /deposito. Opcional: si no se pasa, se
+  // conserva la sucursalId que ya tenía la encomienda (comportamiento
+  // anterior de este componente).
+  sucursalId?: string | null;
 }) {
   if (!encomienda) return null;
 
@@ -45,6 +54,8 @@ export function EncomiendaDetailSheet({
     if (!encomienda) return;
     await updateEncomiendaAction(encomienda.id, {
       estado,
+      sucursalId:
+        estado === "PARA_ENTREGAR" ? (sucursalId ?? encomienda.sucursalId) : encomienda.sucursalId,
       fechaFinalizado:
         estado === "ENTREGADA" ? new Date().toISOString() : encomienda.fechaFinalizado,
       fechaBaja:

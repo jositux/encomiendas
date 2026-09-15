@@ -4,10 +4,6 @@ import {
   PackagePlus,
   LayoutDashboard,
   Inbox,
-  UserCog2,
-  Undo2,
-  Send,
-  Hourglass,
   PackageSearch,
   Users,
   Wallet,
@@ -66,34 +62,10 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Mi depósito",
     items: [
       {
-        title: "Recepción",
-        href: "/encomiendas/recepcion",
+        title: "Depósito",
+        href: "/deposito",
         icon: Inbox,
-        description: "Ingreso de bultos al depósito",
-      },
-      {
-        title: "Designaciones",
-        href: "/encomiendas/designaciones",
-        icon: UserCog2,
-        description: "Asignar encomiendas a un repartidor",
-      },
-      {
-        title: "Devolver",
-        href: "/encomiendas/devolver",
-        icon: Undo2,
-        description: "Marcar encomiendas como devueltas",
-      },
-      {
-        title: "Encomiendas activas",
-        href: "/encomiendas/activas",
-        icon: Send,
-        description: "Encomiendas en curso, activas y entregadas",
-      },
-      {
-        title: "Pendientes",
-        href: "/encomiendas/pendientes",
-        icon: Hourglass,
-        description: "Encomiendas cargadas sin procesar",
+        description: "Recepción, designaciones, devoluciones y encomiendas activas",
       },
       {
         title: "Custodia",

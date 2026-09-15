@@ -1,9 +1,9 @@
-import { getEncomiendas } from "@/server/db";
-import { getSession } from "@/server/session";
-import { RecepcionView } from "./recepcion-view";
+import { redirect } from "next/navigation";
 
-export default async function RecepcionPage() {
-  const [encomiendas, session] = await Promise.all([getEncomiendas(), getSession()]);
-  const enTransito = encomiendas.filter((e) => e.estado === "EN_TRANSITO");
-  return <RecepcionView enTransito={enTransito} sucursalId={session?.puntoId ?? null} />;
+// "Recepción" se consolidó dentro de "Depósito" (una pestaña ahí), junto con
+// Recepción, Designaciones, Devolver, Encomiendas activas y Pendientes. Se
+// deja este redirect en vez de borrar la ruta por si algo todavía apunta al
+// link viejo.
+export default function RecepcionPage() {
+  redirect("/deposito");
 }

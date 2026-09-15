@@ -103,6 +103,12 @@ const EVENTO_ICON: Record<TipoEvento, React.ElementType> = {
   anulacion: Ban,
   correccion_sector: Pencil,
   reversion_entrega: Undo2,
+  // Correccion generica via PATCH /envios/:id (changelog backend
+  // 2026-09-15) — misma familia conceptual que "correccion_sector", mismo
+  // ícono y mismo tono neutro (no entra en los checks de
+  // destructivo/success de abajo, así que ya cae en el "bg-muted" por
+  // default).
+  modificacion: Pencil,
 };
 
 const DETALLE_LABEL: Record<string, string> = {
@@ -533,11 +539,34 @@ function EventoRow({
                 Planilla {evento.planilla.codigoCorto} ({evento.planilla.codigoQr})
               </p>
             )}
-            {detalleEntries.map(([k, v]) => (
-              <p key={k}>
-                {DETALLE_LABEL[k] ?? k}: {String(v)}
-              </p>
-            ))}
+            {detalleEntries.map(([k, v]) => {
+              // "cambios" (evento tipo "modificacion", changelog backend
+              // 2026-09-15) es un objeto anidado {columna: {antes,
+              // despues}}, no un valor plano — String(v) daría
+              // "[object Object]". Se muestra cada columna cambiada como
+              // "antes → después" en vez de eso. El resumen de una línea
+              // ya lo cubre `evento.frase` (armada por el backend); esto
+              // es solo el detalle expandido.
+              if (k === "cambios" && v && typeof v === "object") {
+                return (
+                  <div key={k} className="flex flex-col gap-0.5">
+                    {Object.entries(v as Record<string, { antes?: unknown; despues?: unknown }>).map(
+                      ([campo, diff]) => (
+                        <p key={campo}>
+                          {DETALLE_LABEL[campo] ?? campo}: {String(diff?.antes ?? "—")} →{" "}
+                          {String(diff?.despues ?? "—")}
+                        </p>
+                      )
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <p key={k}>
+                  {DETALLE_LABEL[k] ?? k}: {String(v)}
+                </p>
+              );
+            })}
           </div>
         )}
       </button>

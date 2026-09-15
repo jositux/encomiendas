@@ -1,8 +1,9 @@
-import { getEncomiendas } from "@/server/db";
-import { PendientesView } from "./pendientes-view";
+import { redirect } from "next/navigation";
 
-export default async function PendientesPage() {
-  const encomiendas = await getEncomiendas();
-  const pendientes = encomiendas.filter((e) => e.estado === "PENDIENTE");
-  return <PendientesView pendientes={pendientes} />;
+// "Pendientes" se consolidó dentro de "Depósito" (una pestaña ahí), junto con
+// Recepción, Designaciones, Devolver, Encomiendas activas y Pendientes. Se
+// deja este redirect en vez de borrar la ruta por si algo todavía apunta al
+// link viejo.
+export default function PendientesPage() {
+  redirect("/deposito");
 }

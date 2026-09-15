@@ -1,7 +1,9 @@
-import { getEncomiendas } from "@/server/db";
-import { ActivasView } from "./activas-view";
+import { redirect } from "next/navigation";
 
-export default async function EncomiendasActivasPage() {
-  const encomiendas = await getEncomiendas();
-  return <ActivasView encomiendas={encomiendas} />;
+// "Encomiendas activas" se consolidó dentro de "Depósito" (una pestaña ahí), junto con
+// Recepción, Designaciones, Devolver, Encomiendas activas y Pendientes. Se
+// deja este redirect en vez de borrar la ruta por si algo todavía apunta al
+// link viejo.
+export default function EncomiendasActivasPage() {
+  redirect("/deposito");
 }
