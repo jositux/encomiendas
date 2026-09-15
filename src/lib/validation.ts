@@ -42,3 +42,56 @@ export function sanitizeMoneyInput(raw: string): string {
   if (firstDot === -1) return cleaned;
   return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
 }
+
+// ---------------------------------------------------------------------------
+// Validación de campos de Clientes (nombre, teléfono, DNI/CUIT, email).
+//
+// Mismo criterio de dos capas que arriba: sanitizers en el onChange (nunca
+// dejan tipear un carácter que ya sabemos inválido) + schemas de zod como
+// validación "de verdad" antes de guardar, con el mensaje de error.
+//
+// DNI/CUIT: se valida SOLO la cantidad de dígitos (ignorando espacios y
+// guiones), no un formato exacto con guiones en posiciones fijas — así no
+// se rompe al editar clientes ya cargados con formatos previos a esta
+// validación (ver cliente-form-dialog.tsx, sección 19 del plan de
+// integración). DNI (persona): 7 u 8 dígitos. CUIT (empresa): 11 dígitos.
+// ---------------------------------------------------------------------------
+
+export const nombreClienteSchema = z
+  .string()
+  .trim()
+  .min(2, "Ingresá el nombre completo.");
+
+export const telefonoClienteSchema = z
+  .string()
+  .trim()
+  .min(6, "Ingresá un teléfono válido.");
+
+const soloDigitos = (s: string) => s.replace(/\D/g, "");
+
+export const dniSchema = z
+  .string()
+  .trim()
+  .refine((v) => v === "" || [7, 8].includes(soloDigitos(v).length), {
+    message: "El DNI tiene que tener 7 u 8 dígitos.",
+  });
+
+export const cuitSchema = z
+  .string()
+  .trim()
+  .refine((v) => v === "" || soloDigitos(v).length === 11, {
+    message: "El CUIT tiene que tener 11 dígitos.",
+  });
+
+export const emailOpcionalSchema = z
+  .string()
+  .trim()
+  .refine((v) => v === "" || z.string().email().safeParse(v).success, {
+    message: "Ingresá un email válido.",
+  });
+
+// Deja pasar dígitos, espacios y guiones — sirve para teléfono y DNI/CUIT,
+// que en los datos ya cargados vienen con guiones (ej. "3757-410007").
+export function sanitizeTelefonoODocumentoInput(raw: string): string {
+  return raw.replace(/[^0-9\s-]/g, "");
+}

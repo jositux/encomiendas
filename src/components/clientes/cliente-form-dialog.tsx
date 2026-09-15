@@ -29,6 +29,14 @@ import { createClienteAction, actualizarClienteAction } from "@/server/actions";
 import type { LocalidadBackend } from "@/types";
 import type { SectorApi } from "@/server/services/sectores";
 import type { ClienteApi } from "@/server/services/clientes";
+import {
+  nombreClienteSchema,
+  telefonoClienteSchema,
+  dniSchema,
+  cuitSchema,
+  emailOpcionalSchema,
+  sanitizeTelefonoODocumentoInput,
+} from "@/lib/validation";
 
 // El backend real no tiene un solo domicilio-string por cliente: tiene un
 // domicilio propio (localidadId + sectorId, mismo modelo de ruteo que
@@ -137,8 +145,22 @@ export function ClienteFormDialog({
 
   function validate() {
     const next: Record<string, string> = {};
-    if (!draft.nombre.trim()) next.nombre = "Ingresá el nombre.";
-    if (!draft.telefono.trim()) next.telefono = "Ingresá el teléfono.";
+
+    const nombreResult = nombreClienteSchema.safeParse(draft.nombre);
+    if (!nombreResult.success) next.nombre = nombreResult.error.issues[0].message;
+
+    const telefonoResult = telefonoClienteSchema.safeParse(draft.telefono);
+    if (!telefonoResult.success) next.telefono = telefonoResult.error.issues[0].message;
+
+    // Documento es opcional — solo se valida el formato si se cargó algo.
+    // Persona -> DNI (7/8 dígitos), Empresa -> CUIT (11 dígitos).
+    const documentoSchema = draft.tipo === "empresa" ? cuitSchema : dniSchema;
+    const documentoResult = documentoSchema.safeParse(draft.documento);
+    if (!documentoResult.success) next.documento = documentoResult.error.issues[0].message;
+
+    const emailResult = emailOpcionalSchema.safeParse(draft.email);
+    if (!emailResult.success) next.email = emailResult.error.issues[0].message;
+
     if (!draft.calle.trim()) next.calle = "Ingresá la calle.";
     if (!draft.localidadId) next.localidadId = "Elegí una localidad.";
     if (!draft.sectorId) next.sectorId = "Elegí un sector.";
@@ -237,18 +259,24 @@ export function ClienteFormDialog({
               <Input
                 id="telefono"
                 value={draft.telefono}
-                onChange={(e) => setDraft({ ...draft, telefono: e.target.value })}
+                onChange={(e) =>
+                  setDraft({ ...draft, telefono: sanitizeTelefonoODocumentoInput(e.target.value) })
+                }
                 aria-invalid={!!errors.telefono}
               />
               {errors.telefono && <p className="text-xs text-destructive">{errors.telefono}</p>}
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="documento">DNI / CUIT (opcional)</Label>
+              <Label htmlFor="documento">{draft.tipo === "empresa" ? "CUIT (opcional)" : "DNI (opcional)"}</Label>
               <Input
                 id="documento"
                 value={draft.documento}
-                onChange={(e) => setDraft({ ...draft, documento: e.target.value })}
+                onChange={(e) =>
+                  setDraft({ ...draft, documento: sanitizeTelefonoODocumentoInput(e.target.value) })
+                }
+                aria-invalid={!!errors.documento}
               />
+              {errors.documento && <p className="text-xs text-destructive">{errors.documento}</p>}
             </div>
           </div>
 
@@ -258,8 +286,10 @@ export function ClienteFormDialog({
               id="email"
               type="email"
               value={draft.email}
-              onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+              onChange={(e) => setDraft({ ...draft, email: e.target.value.trim() })}
+              aria-invalid={!!errors.email}
             />
+            {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
           </div>
 
           <div className="grid gap-1.5">

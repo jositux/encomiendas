@@ -1,7 +1,7 @@
 import { getSession } from "@/server/session";
 import { listLocalidades } from "@/server/services/localidades";
 import { listSectores } from "@/server/services/sectores";
-import { listUsuarios, type UsuarioApi } from "@/server/services/usuarios";
+import { listUsuariosSeguro } from "@/server/services/usuarios";
 import { listEnvios } from "@/server/services/envios";
 import { SeguimientoView } from "./seguimiento-view";
 
@@ -26,19 +26,10 @@ import { SeguimientoView } from "./seguimiento-view";
 // /envios/{numero}/seguimiento (responsable.nombre) — no depende de esto.
 // Lo único que de verdad usa `usuarios` acá es el selector de chofer del
 // diálogo "Registrar entrega y confirmar" (ver seguimiento-view.tsx). Por
-// eso esta llamada ahora es best-effort: si falla (403 u otra cosa), la
-// pantalla igual carga y ese selector queda vacío en vez de romper todo.
-async function listUsuariosSeguro(): Promise<UsuarioApi[]> {
-  try {
-    return await listUsuarios();
-  } catch (err) {
-    console.error(
-      "Seguimiento: no se pudo cargar GET /usuarios (se sigue sin la lista de choferes, el resto de la pantalla funciona igual):",
-      err
-    );
-    return [];
-  }
-}
+// eso se usa `listUsuariosSeguro()` (best-effort, ver services/usuarios.ts):
+// si falla (403 u otra cosa), la pantalla igual carga y ese selector queda
+// vacío en vez de romper todo. Mismo bug encontrado y corregido en Custodia
+// y Rutas/Recorridos — ver sección 18.2 del plan de integración.
 
 export default async function SeguimientoPage() {
   const [session, localidades, sectores, usuarios, envios] = await Promise.all([

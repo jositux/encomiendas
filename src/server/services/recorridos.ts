@@ -3,7 +3,7 @@ import "server-only";
 import { apiFetch } from "../api-client";
 import { requireToken } from "./shared";
 import { listPuntos } from "./puntos";
-import { listUsuarios } from "./usuarios";
+import { listUsuariosSeguro } from "./usuarios";
 import { listVehiculos } from "./vehiculos";
 import { listSectores } from "./sectores";
 import type { RecorridoBackend } from "@/types";
@@ -66,10 +66,16 @@ function toRecorrido(
   };
 }
 
+// 2026-09-15: usaba listUsuarios() sin manejo de error — un 403 en
+// GET /usuarios (rol sin permiso de listarlos) tiraba abajo listRecorridos()
+// completo, y con él la pantalla de Rutas. `usuariosById` acá solo resuelve
+// un id a nombre para mostrar, con fallback ya presente en toRecorrido(),
+// así que se cambió a listUsuariosSeguro() (ver sección 18.2 del plan de
+// integración, mismo bug que en Seguimiento/Custodia).
 async function lookups() {
   const [puntos, usuarios, vehiculos] = await Promise.all([
     listPuntos(),
-    listUsuarios(),
+    listUsuariosSeguro(),
     listVehiculos(),
   ]);
   return {
