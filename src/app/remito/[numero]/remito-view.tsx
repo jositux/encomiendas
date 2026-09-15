@@ -44,14 +44,28 @@ export function RemitoView({ remito }: { remito: RemitoApi }) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 print:grid-cols-2 print:gap-3">
-        <Panel remito={remito} etiqueta="Original" />
-        <Panel remito={remito} etiqueta="Duplicado" />
+        <Panel remito={remito} etiqueta="Original" completo />
+        <Panel remito={remito} etiqueta="Duplicado" completo={false} />
       </div>
     </div>
   );
 }
 
-function Panel({ remito, etiqueta }: { remito: RemitoApi; etiqueta: string }) {
+function Panel({
+  remito,
+  etiqueta,
+  completo,
+}: {
+  remito: RemitoApi;
+  etiqueta: string;
+  // Original = se queda con la empresa y acompaña el envío por depósito:
+  // lleva código de barras y el bloque de firma de entrega. Duplicado = se
+  // lo lleva el cliente en el momento del alta, antes de que exista ninguna
+  // firma de entrega real — a pedido explícito (feedback de backend/revisión
+  // 2026-09-15): omitir a propósito código de barras y firmas en esta copia,
+  // para que no se escanee ni se firme por error una copia que no corresponde.
+  completo: boolean;
+}) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-4 text-sm print:break-inside-avoid print:rounded-none print:border-black print:p-3">
       <div className="flex items-start justify-between gap-2 border-b pb-2 print:border-black">
@@ -80,7 +94,20 @@ function Panel({ remito, etiqueta }: { remito: RemitoApi; etiqueta: string }) {
             {formatDateTime(remito.fechaAlta)}
           </p>
         </div>
-        <Barcode39 value={remito.codigoBarras} className="h-12 shrink-0" />
+        {completo && <Barcode39 value={remito.codigoBarras} className="h-12 shrink-0" />}
+      </div>
+
+      {/* Destino grande y destacado — no es decoración: el depósito ordena
+          los envíos por localidad de destino a simple vista, igual que en
+          el sistema anterior (el destacado ahí no era estético). Antes esto
+          quedaba perdido dentro del bloque chico de "Destinatario". */}
+      <div className="rounded bg-primary/10 px-3 py-2 text-center print:border print:border-black print:bg-transparent">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground print:text-black">
+          Destino
+        </p>
+        <p className="text-xl font-bold leading-tight print:text-black">
+          {remito.destino.localidad}
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 border-t pt-2 print:border-black">
@@ -170,22 +197,41 @@ function Panel({ remito, etiqueta }: { remito: RemitoApi; etiqueta: string }) {
         </div>
       </div>
 
-      {/* Bloque de firma de entrega — 3 campos separados en blanco, para
-          completar a mano al momento de la entrega (no hay datos de esto en
-          el alta). "Levantó" ya se muestra arriba con dato real. Espeja al
-          sistema anterior (Entregó / Firma / DNI), a pedido explícito del
-          usuario. */}
-      <div className="mt-2 grid grid-cols-3 gap-2 border-t pt-3 text-xs print:border-black">
-        <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
-          Entregó
+      {/* Bloque de firma de entrega — SOLO en la copia "Original" (ver nota
+          en `completo` arriba). Son campos en blanco para completar a mano
+          al momento de la entrega, no hay estos datos en el alta. "Levantó"
+          ya se muestra arriba con dato real; acá van los 5 campos que
+          faltaban del sistema anterior: hora y fecha de entrega, y quién
+          entregó/recibió (entregó + aclaración + firma + DNI) — restaurados
+          a pedido explícito de revisión (2026-09-15): "la boleta es la
+          prueba de entrega, y este cambio es sobre trazabilidad". */}
+      {completo ? (
+        <div className="mt-2 border-t pt-3 text-xs print:border-black">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
+              Hora y fecha
+            </div>
+          </div>
+          <div className="mt-2 grid grid-cols-4 gap-2">
+            <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
+              Entregó
+            </div>
+            <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
+              Aclaración
+            </div>
+            <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
+              Firma
+            </div>
+            <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
+              DNI
+            </div>
+          </div>
         </div>
-        <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
-          Firma
+      ) : (
+        <div className="mt-2 border-t pt-3 text-center text-xs text-muted-foreground print:border-black print:text-black">
+          Gracias por elegirnos
         </div>
-        <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
-          DNI
-        </div>
-      </div>
+      )}
     </div>
   );
 }
