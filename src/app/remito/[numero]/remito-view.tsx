@@ -83,18 +83,30 @@ function Panel({
         </span>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-mono text-lg font-semibold">#{remito.numero}</p>
-          <p className="text-xs text-muted-foreground print:text-black">
-            Guía {remito.guiaDiaria}
-            {remito.remitoManualNumero ? ` · Remito manual ${remito.remitoManualNumero}` : ""}
-          </p>
-          <p className="text-xs text-muted-foreground print:text-black">
-            {formatDateTime(remito.fechaAlta)}
-          </p>
-        </div>
-        {completo && <Barcode39 value={remito.codigoBarras} className="h-12 shrink-0" />}
+      {/* Número de seguimiento + código de barras: antes iban en la misma
+          fila (número a la izquierda, barra a la derecha) y el código de
+          barras se salía de su recuadro y tapaba el panel de al lado (ver
+          comentario en Barcode39 — bug del 2026-09-16). Ahora van apilados:
+          el número/guía/fecha arriba, sin competir por ancho con nada, y el
+          código de barras abajo en su propia fila, con un alto fijo chico y
+          ancho acotado para que entre cómodo dentro de la columna. */}
+      <div className="flex flex-col gap-1.5">
+        <p className="whitespace-nowrap font-mono text-lg font-semibold">
+          #{remito.numero}
+        </p>
+        <p className="text-xs text-muted-foreground print:text-black">
+          Guía {remito.guiaDiaria}
+          {remito.remitoManualNumero ? ` · Remito manual ${remito.remitoManualNumero}` : ""}
+        </p>
+        <p className="text-xs text-muted-foreground print:text-black">
+          {formatDateTime(remito.fechaAlta)}
+        </p>
+        {completo && (
+          <Barcode39
+            value={remito.codigoBarras}
+            className="mt-1 h-10 w-full max-w-[220px] print:h-9"
+          />
+        )}
       </div>
 
       {/* Destino grande y destacado — no es decoración: el depósito ordena
@@ -207,22 +219,29 @@ function Panel({
           prueba de entrega, y este cambio es sobre trazabilidad". */}
       {completo ? (
         <div className="mt-2 border-t pt-3 text-xs print:border-black">
+          {/* Antes el renglón punteado quedaba pegado al texto de abajo
+              (pt-1 nomás) — no dejaba espacio en blanco arriba para
+              completar a mano. El usuario lo notó imprimiendo un remito
+              real: "para poner la fecha no hay espacio" (2026-09-16). El
+              espacio en blanco para escribir va ARRIBA de cada renglón
+              punteado (pt-6/pt-7 en vez de pt-1) — el renglón + la
+              etiqueta de abajo quedan como referencia de qué va ahí. */}
           <div className="grid grid-cols-2 gap-2">
-            <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
+            <div className="border-t border-dashed pt-7 text-muted-foreground print:border-black print:text-black">
               Hora y fecha
             </div>
           </div>
-          <div className="mt-2 grid grid-cols-4 gap-2">
-            <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
+          <div className="mt-6 grid grid-cols-4 gap-2">
+            <div className="border-t border-dashed pt-7 text-muted-foreground print:border-black print:text-black">
               Entregó
             </div>
-            <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
+            <div className="border-t border-dashed pt-7 text-muted-foreground print:border-black print:text-black">
               Aclaración
             </div>
-            <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
+            <div className="border-t border-dashed pt-7 text-muted-foreground print:border-black print:text-black">
               Firma
             </div>
-            <div className="border-t border-dashed pt-1 text-muted-foreground print:border-black print:text-black">
+            <div className="border-t border-dashed pt-7 text-muted-foreground print:border-black print:text-black">
               DNI
             </div>
           </div>
