@@ -12,6 +12,8 @@
 import { revalidatePath } from "next/cache";
 import * as db from "./db";
 import * as localidadesService from "./services/localidades";
+import * as provinciasService from "./services/provincias";
+import * as sectoresService from "./services/sectores";
 import * as puntosService from "./services/puntos";
 import * as vehiculosService from "./services/vehiculos";
 import * as recorridosService from "./services/recorridos";
@@ -35,6 +37,58 @@ import type {
 
 function revalidateAll() {
   revalidatePath("/", "layout");
+}
+
+// ---------------------------------------------------------------------------
+// 2026-09-16: el usuario reportó (operando como `operador_obera`, un rol sin
+// todos los permisos) un cartel genérico "Minified React error #441" al
+// editar/borrar Vehículos y al tocar Geografía en producción, en vez del
+// detalle real del rechazo (típicamente un 403 de permisos). Causa: mismo
+// bug que el bug 9 (ver claude/plan-integracion-backend.md) — estas
+// acciones dejaban que el `ApiError` cruzara el límite del Server Action
+// ("use server"), y Next.js redacta el mensaje de CUALQUIER error que cruza
+// ese límite en producción (se ve el texto real solo en `pnpm dev` local).
+// El bug 9 ya había arreglado esto para crearEnvioAction y las acciones de
+// Seguimiento con `comoAccionResultado`, pero quedó pendiente aplicarlo al
+// resto ("no se tocaron todavía porque no se confirmó que alguna haya
+// fallado así en producción" — ya se confirmó). Acá se generaliza para
+// TODAS las acciones de escritura contra el backend real que faltaban:
+// Clientes, Vehículos, Sucursales, Localidades, Provincias, Sectores y
+// Rutas/Recorridos (Encomiendas/Personal/Cajas/CRR siguen sobre el mock de
+// db.ts, sin ApiError posible, no les aplica este patrón).
+//
+// `comoResultado` es la versión genérica que además devuelve el dato creado/
+// editado (la UI de estas pantallas lo usa para actualizar sin recargar);
+// `comoAccionResultado` (más abajo, ya existía) sigue igual para las
+// acciones que no necesitan devolver nada.
+type ResultadoConDato<T> = { ok: true; data: T } | { ok: false; title: string; message: string };
+
+async function comoResultado<T>(fn: () => Promise<T>): Promise<ResultadoConDato<T>> {
+  try {
+    const data = await fn();
+    revalidateAll();
+    return { ok: true, data };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, title: err.title, message: err.message };
+    }
+    throw err;
+  }
+}
+
+type AccionResultado = { ok: true } | { ok: false; title: string; message: string };
+
+async function comoAccionResultado(fn: () => Promise<void>): Promise<AccionResultado> {
+  try {
+    await fn();
+    revalidateAll();
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, title: err.title, message: err.message };
+    }
+    throw err;
+  }
 }
 
 // -- Encomiendas --------------------------------------------------------------
@@ -63,18 +117,14 @@ export async function removeEncomiendaAction(id: string) {
 export async function createClienteAction(
   data: Parameters<typeof clientesService.createCliente>[0]
 ) {
-  const item = await clientesService.createCliente(data);
-  revalidateAll();
-  return item;
+  return comoResultado(() => clientesService.createCliente(data));
 }
 
 export async function actualizarClienteAction(
   id: string,
   data: clientesService.ActualizarClienteInput
 ) {
-  const item = await clientesService.actualizarCliente(id, data);
-  revalidateAll();
-  return item;
+  return comoResultado(() => clientesService.actualizarCliente(id, data));
 }
 
 // -- Personal -------------------------------------------------------------------
@@ -100,21 +150,16 @@ export async function createVehiculoAction(data: {
   tipo: string;
   patente?: string | null;
 }) {
-  const item = await vehiculosService.createVehiculo(data);
-  revalidateAll();
-  return item;
+  return comoResultado(() => vehiculosService.createVehiculo(data));
 }
 export async function updateVehiculoAction(
   id: string,
   patch: { nombre?: string; tipo?: string; patente?: string | null; activo?: boolean }
 ) {
-  const item = await vehiculosService.updateVehiculo(id, patch);
-  revalidateAll();
-  return item;
+  return comoResultado(() => vehiculosService.updateVehiculo(id, patch));
 }
 export async function removeVehiculoAction(id: string) {
-  await vehiculosService.updateVehiculo(id, { activo: false });
-  revalidateAll();
+  return comoResultado(() => vehiculosService.updateVehiculo(id, { activo: false }));
 }
 
 export async function listUsuariosAction() {
@@ -127,18 +172,14 @@ export async function updateSucursalAction(
   id: string,
   patch: { nombre?: string; localidadId?: string; tipo?: "base" | "deposito"; activo?: boolean }
 ) {
-  const item = await puntosService.updatePunto(id, patch);
-  revalidateAll();
-  return item;
+  return comoResultado(() => puntosService.updatePunto(id, patch));
 }
 export async function createSucursalAction(data: {
   nombre: string;
   localidadId: string;
   tipo: "base" | "deposito";
 }) {
-  const item = await puntosService.createPunto(data);
-  revalidateAll();
-  return item;
+  return comoResultado(() => puntosService.createPunto(data));
 }
 
 // -- Localidades ----------------------------------------------------------------
@@ -147,22 +188,39 @@ export async function updateLocalidadAction(
   id: string,
   patch: { nombre?: string; provinciaId?: string }
 ) {
-  const item = await localidadesService.updateLocalidad(id, patch);
-  revalidateAll();
-  return item;
+  return comoResultado(() => localidadesService.updateLocalidad(id, patch));
 }
 export async function createLocalidadAction(data: { nombre: string; provinciaId: string }) {
-  const item = await localidadesService.createLocalidad(data);
-  revalidateAll();
-  return item;
+  return comoResultado(() => localidadesService.createLocalidad(data));
+}
+
+// -- Provincias -------------------------------------------------------------------
+
+export async function createProvinciaAction(data: { nombre: string }) {
+  return comoResultado(() => provinciasService.createProvincia(data));
+}
+
+export async function updateProvinciaAction(id: string, patch: { nombre: string }) {
+  return comoResultado(() => provinciasService.updateProvincia(id, patch));
+}
+
+// -- Sectores ---------------------------------------------------------------------
+
+export async function createSectorAction(data: { nombre: string; localidadId: string }) {
+  return comoResultado(() => sectoresService.createSector(data));
+}
+
+export async function updateSectorAction(
+  id: string,
+  patch: { nombre?: string; localidadId?: string }
+) {
+  return comoResultado(() => sectoresService.updateSector(id, patch));
 }
 
 // -- Rutas ------------------------------------------------------------------------
 
 export async function createRutaAction(data: { nombre: string; baseId: string }) {
-  const item = await recorridosService.createRecorrido(data);
-  revalidateAll();
-  return item;
+  return comoResultado(() => recorridosService.createRecorrido(data));
 }
 export async function updateRutaAction(
   id: string,
@@ -175,17 +233,13 @@ export async function updateRutaAction(
     activo?: boolean;
   }
 ) {
-  const item = await recorridosService.updateRecorrido(id, patch);
-  revalidateAll();
-  return item;
+  return comoResultado(() => recorridosService.updateRecorrido(id, patch));
 }
 export async function removeRutaAction(id: string) {
-  await recorridosService.removeRecorrido(id);
-  revalidateAll();
+  return comoAccionResultado(() => recorridosService.removeRecorrido(id));
 }
 export async function setLocalidadesRutaAction(id: string, localidadIds: string[]) {
-  await recorridosService.setLocalidadesRecorrido(id, localidadIds);
-  revalidateAll();
+  return comoAccionResultado(() => recorridosService.setLocalidadesRecorrido(id, localidadIds));
 }
 
 // -- Envios (Nueva Encomienda, API real) -------------------------------------------
@@ -259,34 +313,10 @@ export async function searchClientesAction(q: string) {
 }
 
 export async function removeClienteAction(id: string) {
-  await clientesService.removeCliente(id);
-  revalidateAll();
+  return comoAccionResultado(() => clientesService.removeCliente(id));
 }
 
 // -- Seguimiento de envío --------------------------------------------------------------
-
-type AccionResultado = { ok: true } | { ok: false; title: string; message: string };
-
-// Toda acción de escritura de este tablero puede recibir un rechazo de
-// negocio esperado del backend (409 ENVIO_EN_REPARTO, 409
-// CONFIRMADOR_ES_ENTREGADOR, 409 TENEDOR_INCORRECTO, 409 ENVIO_CONFIRMADO/
-// ENVIO_NO_ENTREGADO, 403 de otra base) — se atrapa el ApiError y se
-// devuelve como dato en vez de dejarlo cruzar el limite del Server Action,
-// mismo patron que crearEnvioAction (ver bug 9 de
-// claude/plan-integracion-backend.md: si no, Next redacta el mensaje real
-// en produccion).
-async function comoAccionResultado(fn: () => Promise<void>): Promise<AccionResultado> {
-  try {
-    await fn();
-    revalidateAll();
-    return { ok: true };
-  } catch (err) {
-    if (err instanceof ApiError) {
-      return { ok: false, title: err.title, message: err.message };
-    }
-    throw err;
-  }
-}
 
 // El texto de busqueda puede ser numero de sistema, remito manual, o guia
 // diaria (letra A-G + digitos, ej. "A17") — el usuario no elige el tipo.

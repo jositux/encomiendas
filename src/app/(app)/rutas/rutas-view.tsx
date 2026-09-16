@@ -47,15 +47,54 @@ export function RutasView({
 
   const selected = rutas.find((r) => r.id === selectedId) ?? null;
 
+  // Helper compartido: envuelve updateRutaAction (que ahora devuelve
+  // ResultadoConDato en vez de la entidad directamente) para que cualquier
+  // edición inline (Selects, "Hora de corte", checkboxes de localidades)
+  // muestre el detalle real del error de la API en vez de fallar en
+  // silencio o dejar pasar un error genérico (ver plan doc, sección 21).
+  async function updateRuta(id: string, patch: Parameters<typeof updateRutaAction>[1]) {
+    const resultado = await updateRutaAction(id, patch);
+    if (!resultado.ok) {
+      toast.error(resultado.title, { description: resultado.message });
+    }
+    return resultado;
+  }
+
   async function handleCreate() {
     if (!nuevoNombre.trim() || !bases[0]) return;
-    const created = await createRutaAction({
+    const resultado = await createRutaAction({
       nombre: nuevoNombre.trim(),
       baseId: bases[0].id,
     });
+    if (!resultado.ok) {
+      toast.error(resultado.title, { description: resultado.message });
+      return;
+    }
     setNuevoNombre("");
-    setSelectedId(created.id);
+    setSelectedId(resultado.data.id);
     toast.success("Recorrido creado");
+  }
+
+  async function handleRemove() {
+    if (!selected) return;
+    const resultado = await removeRutaAction(selected.id);
+    if (!resultado.ok) {
+      toast.error(resultado.title, { description: resultado.message });
+      return;
+    }
+    setSelectedId(null);
+    toast.success("Grupo de ruta eliminado");
+  }
+
+  async function handleToggleLocalidad(id: string, checked: boolean) {
+    if (!selected) return;
+    const next = checked
+      ? [...selected.localidadIds, id]
+      : selected.localidadIds.filter((existing) => existing !== id);
+    const resultado = await setLocalidadesRutaAction(selected.id, next);
+    if (!resultado.ok) {
+      toast.error(resultado.title, { description: resultado.message });
+    }
   }
 
   return (
@@ -120,7 +159,7 @@ export function RutasView({
                   <label className="text-xs text-muted-foreground">Base que procesa</label>
                   <Select
                     value={selected.baseId}
-                    onValueChange={(v) => updateRutaAction(selected.id, { baseId: v })}
+                    onValueChange={(v) => updateRuta(selected.id, { baseId: v })}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue />
@@ -140,7 +179,7 @@ export function RutasView({
                   <Select
                     value={selected.choferPredeterminadoId ?? "none"}
                     onValueChange={(v) =>
-                      updateRutaAction(selected.id, {
+                      updateRuta(selected.id, {
                         choferPredeterminadoId: v === "none" ? null : v,
                       })
                     }
@@ -164,7 +203,7 @@ export function RutasView({
                   <Select
                     value={selected.vehiculoPredeterminadoId ?? "none"}
                     onValueChange={(v) =>
-                      updateRutaAction(selected.id, {
+                      updateRuta(selected.id, {
                         vehiculoPredeterminadoId: v === "none" ? null : v,
                       })
                     }
@@ -193,7 +232,7 @@ export function RutasView({
                     defaultValue={selected.horaCorte ?? ""}
                     className="h-8 w-32"
                     onBlur={(e) =>
-                      updateRutaAction(selected.id, { horaCorte: e.target.value || null })
+                      updateRuta(selected.id, { horaCorte: e.target.value || null })
                     }
                   />
                 </div>
@@ -209,12 +248,7 @@ export function RutasView({
                         <label key={l.id} className="flex items-center gap-1.5 text-xs">
                           <Checkbox
                             checked={checked}
-                            onCheckedChange={(v) => {
-                              const next = v
-                                ? [...selected.localidadIds, l.id]
-                                : selected.localidadIds.filter((id) => id !== l.id);
-                              setLocalidadesRutaAction(selected.id, next);
-                            }}
+                            onCheckedChange={(v) => handleToggleLocalidad(l.id, !!v)}
                           />
                           <span className="flex items-center gap-1 truncate">
                             <MapPin className="size-3 shrink-0 text-muted-foreground" />
@@ -230,11 +264,7 @@ export function RutasView({
                   variant="outline"
                   size="sm"
                   className="ml-auto gap-1.5 text-destructive hover:text-destructive"
-                  onClick={async () => {
-                    await removeRutaAction(selected.id);
-                    setSelectedId(null);
-                    toast.success("Grupo de ruta eliminado");
-                  }}
+                  onClick={handleRemove}
                 >
                   <Trash2 className="size-3.5" /> Eliminar grupo
                 </Button>

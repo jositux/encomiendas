@@ -37,7 +37,11 @@ export function ClientesView({
   async function confirmDelete() {
     if (!toDelete) return;
     try {
-      await removeClienteAction(toDelete.id);
+      const resultado = await removeClienteAction(toDelete.id);
+      if (!resultado.ok) {
+        toast.error(resultado.title, { description: resultado.message });
+        return;
+      }
       toast.success("Cliente eliminado");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo eliminar el cliente.");

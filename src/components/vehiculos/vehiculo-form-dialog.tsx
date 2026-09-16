@@ -61,13 +61,14 @@ export function VehiculoFormDialog({
     setSubmitting(true);
     try {
       const patente = draft.patente.trim() || null;
-      if (vehiculo) {
-        await updateVehiculoAction(vehiculo.id, { nombre: draft.nombre, tipo: draft.tipo, patente });
-        toast.success("Vehículo actualizado");
-      } else {
-        await createVehiculoAction({ nombre: draft.nombre, tipo: draft.tipo, patente });
-        toast.success("Vehículo agregado");
+      const resultado = vehiculo
+        ? await updateVehiculoAction(vehiculo.id, { nombre: draft.nombre, tipo: draft.tipo, patente })
+        : await createVehiculoAction({ nombre: draft.nombre, tipo: draft.tipo, patente });
+      if (!resultado.ok) {
+        toast.error(resultado.title, { description: resultado.message });
+        return;
       }
+      toast.success(vehiculo ? "Vehículo actualizado" : "Vehículo agregado");
       setOpen(false);
     } finally {
       setSubmitting(false);

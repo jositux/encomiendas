@@ -17,3 +17,19 @@ export async function listProvincias(): Promise<ProvinciaApi[]> {
   const token = await requireToken();
   return apiFetch<ProvinciaApi[]>("/provincias", { token });
 }
+
+// createProvincia/updateProvincia: confirmado en vivo el 2026-09-16 (ver
+// sección 20 del plan de integración) — el backend real SÍ tiene
+// POST/PATCH /provincias, mismo shape que Localidades ({ nombre }).
+export async function createProvincia(data: { nombre: string }): Promise<ProvinciaApi> {
+  const token = await requireToken();
+  return apiFetch<ProvinciaApi>("/provincias", { method: "POST", token, body: data });
+}
+
+export async function updateProvincia(
+  id: string,
+  patch: { nombre: string }
+): Promise<ProvinciaApi> {
+  const token = await requireToken();
+  return apiFetch<ProvinciaApi>(`/provincias/${id}`, { method: "PATCH", token, body: patch });
+}

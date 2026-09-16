@@ -26,13 +26,22 @@ export function VehiculosView({ vehiculos }: { vehiculos: VehiculoBackend[] }) {
   async function confirmDelete() {
     if (!toDelete) return;
     try {
-      await removeVehiculoAction(toDelete.id);
+      const resultado = await removeVehiculoAction(toDelete.id);
+      if (!resultado.ok) {
+        toast.error(resultado.title, { description: resultado.message });
+        return;
+      }
       toast.success("Vehículo dado de baja");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo dar de baja el vehículo.");
     } finally {
       setToDelete(null);
     }
+  }
+
+  async function toggleActivo(id: string, activo: boolean) {
+    const resultado = await updateVehiculoAction(id, { activo });
+    if (!resultado.ok) toast.error(resultado.title, { description: resultado.message });
   }
 
   const columns = React.useMemo<ColumnDef<VehiculoBackend>[]>(
@@ -63,7 +72,7 @@ export function VehiculosView({ vehiculos }: { vehiculos: VehiculoBackend[] }) {
         cell: ({ row }) => (
           <Switch
             checked={row.original.activo}
-            onCheckedChange={(v) => updateVehiculoAction(row.original.id, { activo: v })}
+            onCheckedChange={(v) => toggleActivo(row.original.id, v)}
           />
         ),
       },

@@ -189,13 +189,15 @@ export function ClienteFormDialog({
 
     setSubmitting(true);
     try {
-      if (esEdicion && cliente) {
-        await actualizarClienteAction(cliente.id, payload);
-        toast.success("Cliente actualizado");
-      } else {
-        await createClienteAction(payload);
-        toast.success("Cliente creado");
+      const resultado =
+        esEdicion && cliente
+          ? await actualizarClienteAction(cliente.id, payload)
+          : await createClienteAction(payload);
+      if (!resultado.ok) {
+        toast.error(resultado.title, { description: resultado.message });
+        return;
       }
+      toast.success(esEdicion ? "Cliente actualizado" : "Cliente creado");
       setOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo guardar el cliente.");

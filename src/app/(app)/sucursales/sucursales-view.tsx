@@ -54,6 +54,17 @@ export function SucursalesView({
   const [tipo, setTipo] = React.useState<PuntoBackend["tipo"]>("base");
   const [submitting, setSubmitting] = React.useState(false);
 
+  // 2026-09-16: las ediciones inline de la tabla (nombre/localidad/tipo/
+  // activo) llamaban a updateSucursalAction sin esperar la promesa ni
+  // manejar el error — un rechazo del backend (ej. 403 de permisos) se
+  // perdía en silencio. Este helper compartido espera el resultado y
+  // muestra el título real si falla (ver actions.ts, mismo patrón que el
+  // resto de Geografía/Vehículos/Clientes).
+  async function updateSucursal(id: string, patch: Parameters<typeof updateSucursalAction>[1]) {
+    const resultado = await updateSucursalAction(id, patch);
+    if (!resultado.ok) toast.error(resultado.title, { description: resultado.message });
+  }
+
   async function handleCreate() {
     if (!nombre.trim()) {
       toast.error("Ingresá el nombre.");
@@ -65,7 +76,11 @@ export function SucursalesView({
     }
     setSubmitting(true);
     try {
-      await createSucursalAction({ nombre, localidadId, tipo });
+      const resultado = await createSucursalAction({ nombre, localidadId, tipo });
+      if (!resultado.ok) {
+        toast.error(resultado.title, { description: resultado.message });
+        return;
+      }
       toast.success("Sucursal creada");
       setNombre("");
       setOpen(false);
@@ -168,7 +183,7 @@ export function SucursalesView({
                       className="h-8 max-w-52"
                       onBlur={(e) =>
                         e.target.value !== s.nombre &&
-                        updateSucursalAction(s.id, { nombre: e.target.value })
+                        updateSucursal(s.id, { nombre: e.target.value })
                       }
                     />
                     {s.esCasaCentral && <Badge variant="outline">Casa central</Badge>}
@@ -178,7 +193,7 @@ export function SucursalesView({
                 <TableCell>
                   <Select
                     value={s.localidadId}
-                    onValueChange={(v) => v !== s.localidadId && updateSucursalAction(s.id, { localidadId: v })}
+                    onValueChange={(v) => v !== s.localidadId && updateSucursal(s.id, { localidadId: v })}
                   >
                     <SelectTrigger className="h-8 w-40">
                       <SelectValue />
@@ -196,7 +211,7 @@ export function SucursalesView({
                   <Select
                     value={s.tipo}
                     onValueChange={(v) =>
-                      v !== s.tipo && updateSucursalAction(s.id, { tipo: v as PuntoBackend["tipo"] })
+                      v !== s.tipo && updateSucursal(s.id, { tipo: v as PuntoBackend["tipo"] })
                     }
                   >
                     <SelectTrigger className="h-8 w-32">
@@ -211,7 +226,7 @@ export function SucursalesView({
                 <TableCell>
                   <Switch
                     checked={s.activo}
-                    onCheckedChange={(v) => updateSucursalAction(s.id, { activo: v })}
+                    onCheckedChange={(v) => updateSucursal(s.id, { activo: v })}
                   />
                 </TableCell>
               </TableRow>
