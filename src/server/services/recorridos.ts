@@ -1,6 +1,6 @@
 import "server-only";
 
-import { apiFetch } from "../api-client";
+import { apiFetch, apiFetchColeccion } from "../api-client";
 import { requireToken } from "./shared";
 import { listPuntos } from "./puntos";
 import { listUsuariosSeguro } from "./usuarios";
@@ -87,11 +87,12 @@ async function lookups() {
 
 export async function listRecorridos(): Promise<RecorridoBackend[]> {
   const token = await requireToken();
-  const [items, { puntosById, usuariosById, vehiculosById }] = await Promise.all([
-    apiFetch<RecorridoApi[]>("/recorridos", { token }),
+  const [pagina, { puntosById, usuariosById, vehiculosById }] = await Promise.all([
+    // Catalogo: sin limite=200 explicito, el backend trunca a 50 (default).
+    apiFetchColeccion<RecorridoApi>("/recorridos?limite=200", { token }),
     lookups(),
   ]);
-  return items.map((item) => toRecorrido(item, puntosById, usuariosById, vehiculosById));
+  return pagina.datos.map((item) => toRecorrido(item, puntosById, usuariosById, vehiculosById));
 }
 
 export async function createRecorrido(data: {

@@ -35,7 +35,10 @@ import {
   dniSchema,
   cuitSchema,
   emailOpcionalSchema,
-  sanitizeTelefonoODocumentoInput,
+  sanitizeTelefonoInput,
+  sanitizeDocumentoInput,
+  sanitizeEmailInput,
+  sanitizeIntegerInput,
 } from "@/lib/validation";
 
 // El backend real no tiene un solo domicilio-string por cliente: tiene un
@@ -90,20 +93,32 @@ function emptyDraft(localidades: LocalidadBackend[], sectores: SectorApi[]): Dra
   };
 }
 
-function draftFromCliente(cliente: ClienteApi): Draft {
+function draftFromCliente(cliente: ClienteApi, sectores: SectorApi[]): Draft {
+  // Si el cliente ya tiene datos sucios de antes de estas validaciones
+  // (ej. un documento con letras/de más de 11 dígitos cargado a mano en
+  // pruebas), los saneamos al entrar a edición en vez de mostrarlos tal
+  // cual — así el usuario ve el campo ya "enmascarado" y no hace falta que
+  // borre todo a mano para poder guardar.
+  const sectorValido = sectores.some(
+    (s) => s.id === cliente.sectorId && s.localidadId === cliente.localidadId
+  );
+  const sectorId = sectorValido
+    ? cliente.sectorId
+    : sectores.find((s) => s.localidadId === cliente.localidadId)?.id ?? "";
+
   return {
     tipo: cliente.tipo,
     nombre: cliente.nombre,
-    telefono: cliente.telefono,
-    documento: cliente.documento ?? "",
+    telefono: sanitizeTelefonoInput(cliente.telefono),
+    documento: sanitizeDocumentoInput(cliente.documento ?? "", cliente.tipo),
     email: cliente.email ?? "",
     esCuentaCorriente: cliente.esCuentaCorriente,
     calle: cliente.calle,
-    numero: cliente.numero ?? "",
+    numero: sanitizeIntegerInput(cliente.numero ?? ""),
     piso: cliente.piso ?? "",
     referencia: cliente.referencia ?? "",
     localidadId: cliente.localidadId,
-    sectorId: cliente.sectorId,
+    sectorId,
   };
 }
 
@@ -129,14 +144,14 @@ export function ClienteFormDialog({
   const [openUncontrolled, setOpenUncontrolled] = React.useState(false);
   const open = openControlled ?? openUncontrolled;
   const [draft, setDraft] = React.useState<Draft>(
-    cliente ? draftFromCliente(cliente) : emptyDraft(localidades, sectores)
+    cliente ? draftFromCliente(cliente, sectores) : emptyDraft(localidades, sectores)
   );
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [submitting, setSubmitting] = React.useState(false);
 
   function setOpen(next: boolean) {
     if (next) {
-      setDraft(cliente ? draftFromCliente(cliente) : emptyDraft(localidades, sectores));
+      setDraft(cliente ? draftFromCliente(cliente, sectores) : emptyDraft(localidades, sectores));
       setErrors({});
     }
     onOpenChangeControlled?.(next);
@@ -262,7 +277,7 @@ export function ClienteFormDialog({
                 id="telefono"
                 value={draft.telefono}
                 onChange={(e) =>
-                  setDraft({ ...draft, telefono: sanitizeTelefonoODocumentoInput(e.target.value) })
+                  setDraft({ ...draft, telefono: sanitizeTelefonoInput(e.target.value) })
                 }
                 aria-invalid={!!errors.telefono}
               />
@@ -274,7 +289,7 @@ export function ClienteFormDialog({
                 id="documento"
                 value={draft.documento}
                 onChange={(e) =>
-                  setDraft({ ...draft, documento: sanitizeTelefonoODocumentoInput(e.target.value) })
+                  setDraft({ ...draft, documento: sanitizeDocumentoInput(e.target.value, draft.tipo) })
                 }
                 aria-invalid={!!errors.documento}
               />
@@ -288,7 +303,7 @@ export function ClienteFormDialog({
               id="email"
               type="email"
               value={draft.email}
-              onChange={(e) => setDraft({ ...draft, email: e.target.value.trim() })}
+              onChange={(e) => setDraft({ ...draft, email: sanitizeEmailInput(e.target.value) })}
               aria-invalid={!!errors.email}
             />
             {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
@@ -310,7 +325,7 @@ export function ClienteFormDialog({
               <Input
                 id="numero"
                 value={draft.numero}
-                onChange={(e) => setDraft({ ...draft, numero: e.target.value })}
+                onChange={(e) => setDraft({ ...draft, numero: sanitizeIntegerInput(e.target.value) })}
               />
             </div>
             <div className="grid gap-1.5">

@@ -31,14 +31,14 @@ import { logout } from "@/server/auth-actions";
 import { resetDemoDataAction } from "@/server/actions";
 import { ALL_NAV_ITEMS } from "@/lib/nav-config";
 import { initials } from "@/lib/format";
-import type { SesionUsuario, Sucursal } from "@/types";
+import type { SesionUsuario, PuntoBackend } from "@/types";
 
 export function AppHeader({
   session,
   sucursal,
 }: {
   session: SesionUsuario;
-  sucursal: Sucursal | null;
+  sucursal: PuntoBackend | null;
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [resetOpen, setResetOpen] = React.useState(false);
@@ -82,7 +82,10 @@ export function AppHeader({
               <SheetTitle>Menú</SheetTitle>
             </VisuallyHidden>
           </SheetHeader>
-          <SidebarContent onNavigate={() => setMobileOpen(false)} />
+          <SidebarContent
+            onNavigate={() => setMobileOpen(false)}
+            permisos={session.permisos}
+          />
         </SheetContent>
       </Sheet>
 
@@ -93,14 +96,14 @@ export function AppHeader({
       </div>
 
       {sucursal && (
+        // 2026-09-17: antes mostraba un puntito con `sucursal.color` (campo
+        // del mock viejo); el backend real (PuntoBackend) no tiene ese
+        // concepto — ver sección 28 del plan de integración — así que el
+        // badge queda solo con el nombre.
         <Badge
           variant="outline"
           className="hidden sm:inline-flex items-center gap-1.5 border-dashed"
         >
-          <span
-            className="size-2 rounded-full"
-            style={{ backgroundColor: sucursal.color }}
-          />
           {sucursal.nombre}
         </Badge>
       )}

@@ -14,6 +14,7 @@ import {
   Map,
   CreditCard,
   Search,
+  ClipboardList,
 } from "lucide-react";
 
 export interface NavItem {
@@ -21,6 +22,15 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   description: string;
+  // Permiso real (string de SesionUsuario.permisos, ver GET /auth/yo) que
+  // hace falta para que el item aparezca en el menú. Opcional: la mayoría
+  // de las pantallas no tiene un permiso de lectura propio y sigue
+  // visible para cualquier usuario logueado, como siempre. Se agregó por
+  // "Chofer" (2026-09-17, corregido el mismo día — ver sección 27 del
+  // plan): un usuario sin el permiso de lectura correspondiente rompía
+  // toda la pantalla al entrar — mejor no mostrar la opción que mostrarla
+  // y que explote.
+  permiso?: string;
 }
 
 export interface NavGroup {
@@ -72,6 +82,17 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/custodia",
         icon: PackageSearch,
         description: "Quién tiene cada envío ahora y en qué punto",
+      },
+      {
+        title: "Chofer",
+        href: "/chofer",
+        icon: ClipboardList,
+        description: "Cargar/recibir planillas y registrar entregas, intentos e incidencias",
+        // Corregido 2026-09-17 (sección 27 del plan): NO es despachos:leer
+        // (permiso de oficina que un chofer real nunca tiene) — el punto
+        // de entrada real de la pantalla es la búsqueda de planilla por
+        // código, que solo pide planillas:leer.
+        permiso: "planillas:leer",
       },
     ],
   },

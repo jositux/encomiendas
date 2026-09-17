@@ -1,6 +1,6 @@
 import { getSession } from "@/server/session";
-import { listLocalidades } from "@/server/services/localidades";
-import { listSectores } from "@/server/services/sectores";
+import { listLocalidadesSeguro } from "@/server/services/localidades";
+import { listSectoresSeguro } from "@/server/services/sectores";
 import { listUsuariosSeguro } from "@/server/services/usuarios";
 import { listEnvios } from "@/server/services/envios";
 import { SeguimientoView } from "./seguimiento-view";
@@ -30,12 +30,21 @@ import { SeguimientoView } from "./seguimiento-view";
 // si falla (403 u otra cosa), la pantalla igual carga y ese selector queda
 // vacío en vez de romper todo. Mismo bug encontrado y corregido en Custodia
 // y Rutas/Recorridos — ver sección 18.2 del plan de integración.
+//
+// 2026-09-17 (sección 27.1 del plan): mismo bug, encontrado esta vez con
+// `listLocalidades()`/`listSectores()` — un rol sin `geografia:leer` (ej.
+// chofer_obera) recibía 403 acá y tiraba abajo TODA la pantalla, aunque
+// `localidades`/`sectores` acá solo alimentan selectores (ej. "Corregir
+// sector") y no son una precondición dura para ver/buscar envíos. Cambiado
+// a `listLocalidadesSeguro()`/`listSectoresSeguro()` (mismo patrón
+// best-effort de arriba): si fallan, esos selectores quedan vacíos en vez
+// de romper la pantalla.
 
 export default async function SeguimientoPage() {
   const [session, localidades, sectores, usuarios, envios] = await Promise.all([
     getSession(),
-    listLocalidades(),
-    listSectores(),
+    listLocalidadesSeguro(),
+    listSectoresSeguro(),
     listUsuariosSeguro(),
     listEnvios({ limite: 20 }),
   ]);

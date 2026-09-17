@@ -1,6 +1,6 @@
 import "server-only";
 
-import { apiFetch } from "../api-client";
+import { apiFetch, apiFetchColeccion } from "../api-client";
 import { requireToken } from "./shared";
 import type { VehiculoBackend } from "@/types";
 
@@ -30,8 +30,9 @@ function toVehiculo(item: VehiculoApi): VehiculoBackend {
 
 export async function listVehiculos(): Promise<VehiculoBackend[]> {
   const token = await requireToken();
-  const items = await apiFetch<VehiculoApi[]>("/vehiculos", { token });
-  return items.map(toVehiculo);
+  // Catalogo: sin limite=200 explicito, el backend trunca a 50 (default).
+  const pagina = await apiFetchColeccion<VehiculoApi>("/vehiculos?limite=200", { token });
+  return pagina.datos.map(toVehiculo);
 }
 
 export async function createVehiculo(data: {

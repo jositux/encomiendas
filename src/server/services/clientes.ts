@@ -1,6 +1,6 @@
 import "server-only";
 
-import { apiFetch } from "../api-client";
+import { apiFetch, apiFetchColeccion } from "../api-client";
 import { requireToken } from "./shared";
 import { listLocalidades } from "./localidades";
 import { listSectores } from "./sectores";
@@ -63,7 +63,8 @@ export async function searchClientes(q: string): Promise<ClienteApi[]> {
   if (query.length < 2) return [];
   const token = await requireToken();
   const params = new URLSearchParams({ q: query, limite: "8" });
-  return apiFetch<ClienteApi[]>(`/clientes?${params.toString()}`, { token });
+  const pagina = await apiFetchColeccion<ClienteApi>(`/clientes?${params.toString()}`, { token });
+  return pagina.datos;
 }
 
 // El `q` de GET /clientes solo matchea por el INICIO del nombre completo
@@ -109,7 +110,8 @@ export async function searchClientesPorNombre(q: string): Promise<ClienteApi[]> 
 // searchClientes (con `q`, para el buscador rapido de Nueva Encomienda).
 export async function listClientes(): Promise<ClienteApi[]> {
   const token = await requireToken();
-  return apiFetch<ClienteApi[]>("/clientes?limite=200", { token });
+  const pagina = await apiFetchColeccion<ClienteApi>("/clientes?limite=200", { token });
+  return pagina.datos;
 }
 
 export async function createCliente(data: {

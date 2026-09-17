@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { getSession } from "@/server/session";
-import { getSucursales } from "@/server/db";
+import { listPuntosSeguro } from "@/server/services/puntos";
 
 export default async function AppLayout({
   children,
@@ -15,12 +15,15 @@ export default async function AppLayout({
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const sucursales = await getSucursales();
-  const sucursal = sucursales.find((s) => s.id === session.puntoId) ?? null;
+  // 2026-09-17: antes buscaba la sucursal en datos mock (getSucursales())
+  // comparando contra el puntoId real del backend -- nunca coincidía para
+  // ningún usuario real. Ver sección 28 del plan de integración.
+  const puntos = await listPuntosSeguro();
+  const sucursal = puntos.find((p) => p.id === session.puntoId) ?? null;
 
   return (
     <div className="flex h-svh w-full overflow-hidden bg-muted/30">
-      <AppSidebar />
+      <AppSidebar permisos={session.permisos} />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader session={session} sucursal={sucursal} />
         <main className="flex-1 overflow-y-auto">

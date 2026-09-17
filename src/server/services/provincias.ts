@@ -1,6 +1,6 @@
 import "server-only";
 
-import { apiFetch } from "../api-client";
+import { apiFetch, apiFetchColeccion } from "../api-client";
 import { requireToken } from "./shared";
 
 // Refleja 1:1 GET /provincias del backend real. Hoy el backend solo tiene
@@ -15,7 +15,9 @@ export interface ProvinciaApi {
 
 export async function listProvincias(): Promise<ProvinciaApi[]> {
   const token = await requireToken();
-  return apiFetch<ProvinciaApi[]>("/provincias", { token });
+  // Catalogo: sin limite=200 explicito, el backend trunca a 50 (default).
+  const pagina = await apiFetchColeccion<ProvinciaApi>("/provincias?limite=200", { token });
+  return pagina.datos;
 }
 
 // createProvincia/updateProvincia: confirmado en vivo el 2026-09-16 (ver

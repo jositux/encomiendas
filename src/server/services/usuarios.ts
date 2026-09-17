@@ -1,6 +1,6 @@
 import "server-only";
 
-import { apiFetch } from "../api-client";
+import { apiFetchColeccion } from "../api-client";
 import { requireToken } from "./shared";
 
 // Forma cruda de GET /usuarios. Se usa hoy solo como fuente para elegir
@@ -18,7 +18,9 @@ export interface UsuarioApi {
 
 export async function listUsuarios(): Promise<UsuarioApi[]> {
   const token = await requireToken();
-  return apiFetch<UsuarioApi[]>("/usuarios", { token });
+  // Catalogo: sin limite=200 explicito, el backend trunca a 50 (default).
+  const pagina = await apiFetchColeccion<UsuarioApi>("/usuarios?limite=200", { token });
+  return pagina.datos;
 }
 
 // Variante "best effort": el backend confirmó (2026-09-15, ver sección 18.2

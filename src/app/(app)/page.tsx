@@ -8,7 +8,8 @@ import {
 } from "lucide-react";
 
 import { NAV_GROUPS } from "@/lib/nav-config";
-import { getEncomiendas, getMovimientosCrr, getSucursales } from "@/server/db";
+import { getEncomiendas, getMovimientosCrr } from "@/server/db";
+import { listPuntosSeguro } from "@/server/services/puntos";
 import { getSession } from "@/server/session";
 import { StatCard } from "@/components/shared/stat-card";
 import { PageHeader } from "@/components/shared/page-header";
@@ -16,13 +17,16 @@ import { Card } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/format";
 
 export default async function HomePage() {
-  const [encomiendas, movimientosCrr, sucursales, session] = await Promise.all([
+  const [encomiendas, movimientosCrr, puntos, session] = await Promise.all([
     getEncomiendas(),
     getMovimientosCrr(),
-    getSucursales(),
+    listPuntosSeguro(),
     getSession(),
   ]);
-  const sucursal = sucursales.find((s) => s.id === session?.puntoId);
+  // 2026-09-17: antes buscaba en datos mock (getSucursales()) comparando
+  // contra el puntoId real del backend -- nunca coincidía. Ver sección 28
+  // del plan de integración.
+  const sucursal = puntos.find((p) => p.id === session?.puntoId);
 
   const pendientes = encomiendas.filter((e) => e.estado === "PENDIENTE").length;
   const enTransito = encomiendas.filter((e) => e.estado === "EN_TRANSITO").length;
@@ -79,36 +83,47 @@ export default async function HomePage() {
       </div>
 
       <div className="flex flex-col gap-8">
-        {NAV_GROUPS.map((group) => (
-          <section key={group.label}>
-            <h2 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-              {group.label}
-            </h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link key={item.href} href={item.href} className="group">
-                    <Card className="h-full gap-3 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30">
-                      <div className="flex items-start justify-between px-4">
-                        <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                          <Icon className="size-5" />
+        {NAV_GROUPS.map((group) => {
+          // Mismo filtro por permiso real que el menú lateral (ver
+          // app-sidebar.tsx y nav-config.ts) — sin esto, un item con
+          // `permiso` (ej. "Chofer") seguía apareciendo acá aunque ya no
+          // apareciera en el menú, porque este grid tiene su propia copia
+          // de NAV_GROUPS sin filtrar. 2026-09-17.
+          const items = group.items.filter(
+            (item) => !item.permiso || session?.permisos.includes(item.permiso)
+          );
+          if (items.length === 0) return null;
+          return (
+            <section key={group.label}>
+              <h2 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                {group.label}
+              </h2>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link key={item.href} href={item.href} className="group">
+                      <Card className="h-full gap-3 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30">
+                        <div className="flex items-start justify-between px-4">
+                          <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                            <Icon className="size-5" />
+                          </div>
+                          <ArrowRight className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                         </div>
-                        <ArrowRight className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                      </div>
-                      <div className="px-4">
-                        <p className="text-sm font-semibold">{item.title}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
-                          {item.description}
-                        </p>
-                      </div>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+                        <div className="px-4">
+                          <p className="text-sm font-semibold">{item.title}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
+                            {item.description}
+                          </p>
+                        </div>
+                      </Card>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </div>
   );

@@ -13,9 +13,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export function SidebarContent({
   collapsed = false,
   onNavigate,
+  permisos = [],
 }: {
   collapsed?: boolean;
   onNavigate?: () => void;
+  // Permisos reales del usuario logueado (SesionUsuario.permisos). Un
+  // NavItem con `permiso` definido solo se muestra si está en esta lista —
+  // ver nav-config.ts. Default [] por las dudas (nunca debería pasar sin
+  // pasarlo, pero así un item sin `permiso` explícito sigue visible igual).
+  permisos?: string[];
 }) {
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
@@ -40,23 +46,29 @@ export function SidebarContent({
 
       <ScrollArea className="flex-1 px-3 py-3">
         <nav className="flex flex-col gap-3">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.label} className="flex flex-col gap-1">
-              {!collapsed && (
-                <p className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-sidebar-foreground/40 uppercase">
-                  {group.label}
-                </p>
-              )}
-              {group.items.map((item) => (
-                <NavLinkItem
-                  key={item.href}
-                  item={item}
-                  collapsed={collapsed}
-                  onNavigate={onNavigate}
-                />
-              ))}
-            </div>
-          ))}
+          {NAV_GROUPS.map((group) => {
+            const items = group.items.filter(
+              (item) => !item.permiso || permisos.includes(item.permiso)
+            );
+            if (items.length === 0) return null;
+            return (
+              <div key={group.label} className="flex flex-col gap-1">
+                {!collapsed && (
+                  <p className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-sidebar-foreground/40 uppercase">
+                    {group.label}
+                  </p>
+                )}
+                {items.map((item) => (
+                  <NavLinkItem
+                    key={item.href}
+                    item={item}
+                    collapsed={collapsed}
+                    onNavigate={onNavigate}
+                  />
+                ))}
+              </div>
+            );
+          })}
         </nav>
       </ScrollArea>
 
@@ -76,7 +88,7 @@ export function SidebarContent({
   );
 }
 
-export function AppSidebar() {
+export function AppSidebar({ permisos = [] }: { permisos?: string[] }) {
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
 
@@ -88,7 +100,7 @@ export function AppSidebar() {
       )}
     >
       <div className="fixed inset-y-0 z-30 flex h-svh flex-col" style={{ width: collapsed ? 64 : 256 }}>
-        <SidebarContent collapsed={collapsed} />
+        <SidebarContent collapsed={collapsed} permisos={permisos} />
       </div>
       <Button
         variant="secondary"

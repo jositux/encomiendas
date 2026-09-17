@@ -50,6 +50,30 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   return payload as T;
 }
 
+export interface PaginaApi<T> {
+  datos: T[];
+  total: number;
+  limite: number;
+  offset: number;
+}
+
+/**
+ * Wrapper para endpoints GET de colección, que desde 2026-09 el backend
+ * devuelve como { datos, total, limite, offset } en vez de un array plano.
+ * `datos` es exactamente el array que se recibía antes. Ver seccion 24 de
+ * plan-integracion-backend.md.
+ *
+ * Devuelve la página completa (no solo `datos`) para que el caller pueda
+ * usar `total`/`offset` si los necesita (paginación real); si solo hace
+ * falta el array, usar `.datos`.
+ */
+export async function apiFetchColeccion<T>(
+  path: string,
+  options: ApiFetchOptions = {}
+): Promise<PaginaApi<T>> {
+  return apiFetch<PaginaApi<T>>(path, options);
+}
+
 export function nuevoClientUuid(): string {
   return crypto.randomUUID();
 }

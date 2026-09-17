@@ -1,6 +1,6 @@
 import "server-only";
 
-import { apiFetch, nuevoClientUuid } from "../api-client";
+import { apiFetch, apiFetchColeccion, nuevoClientUuid } from "../api-client";
 import { requireToken } from "./shared";
 
 // DTOs tomados del OpenAPI real (GET /docs-json), no documentados con tanto
@@ -235,12 +235,18 @@ export async function actualizarEnvio(
 export async function listEnvios(params?: {
   estado?: string;
   limite?: number;
+  // Changelog backend 2026-09-16: GET /envios ahora tambien acepta offset
+  // (pagina real, no solo el tope `limite`). Opcional: quien no lo necesita
+  // sigue trayendo desde el principio, igual que antes.
+  offset?: number;
 }): Promise<EnvioApi[]> {
   const token = await requireToken();
   const qs = new URLSearchParams();
   if (params?.estado) qs.set("estado", params.estado);
   qs.set("limite", String(params?.limite ?? 50));
-  return apiFetch<EnvioApi[]>(`/envios?${qs.toString()}`, { token });
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+  const pagina = await apiFetchColeccion<EnvioApi>(`/envios?${qs.toString()}`, { token });
+  return pagina.datos;
 }
 
 // GET /envios/{numero}/remito — nuevo endpoint del backend (changelog

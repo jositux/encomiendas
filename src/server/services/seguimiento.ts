@@ -1,6 +1,6 @@
 import "server-only";
 
-import { apiFetch, nuevoClientUuid } from "../api-client";
+import { apiFetch, apiFetchColeccion, nuevoClientUuid } from "../api-client";
 import { requireToken } from "./shared";
 import type { EnvioApi } from "./envios";
 
@@ -110,7 +110,8 @@ export async function buscarEnvioPorGuia(
   const token = await requireToken();
   const qs = new URLSearchParams({ guia });
   if (fecha) qs.set("fecha", fecha);
-  return apiFetch<EnvioApi[]>(`/envios?${qs.toString()}`, { token });
+  const pagina = await apiFetchColeccion<EnvioApi>(`/envios?${qs.toString()}`, { token });
+  return pagina.datos;
 }
 
 // -- Acciones contextuales --------------------------------------------------

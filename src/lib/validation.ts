@@ -90,8 +90,27 @@ export const emailOpcionalSchema = z
     message: "Ingresá un email válido.",
   });
 
-// Deja pasar dígitos, espacios y guiones — sirve para teléfono y DNI/CUIT,
-// que en los datos ya cargados vienen con guiones (ej. "3757-410007").
-export function sanitizeTelefonoODocumentoInput(raw: string): string {
+// Deja pasar dígitos, espacios y guiones — sirve para teléfono, que
+// legítimamente se tipea con guiones (ej. "3757-410007").
+export function sanitizeTelefonoInput(raw: string): string {
   return raw.replace(/[^0-9\s-]/g, "");
+}
+
+// DNI/CUIT: a diferencia del teléfono, el usuario pidió explícitamente que
+// sean estrictamente numéricos (sin guiones/espacios) y con tope de
+// longitud mientras se tipea — no solo validado al guardar (2026-09-16:
+// "Telefono: mascara numero telefono / CUIT: numerico. max: 11"). DNI
+// (persona) tope 8 dígitos, CUIT (empresa) tope 11.
+export function sanitizeDocumentoInput(raw: string, tipo: "persona" | "empresa"): string {
+  const soloDigitos = raw.replace(/[^0-9]/g, "");
+  const tope = tipo === "empresa" ? 11 : 8;
+  return soloDigitos.slice(0, tope);
+}
+
+// Deja pasar los caracteres válidos de un email mientras se tipea (letras,
+// dígitos, "@", ".", "_", "-", "+") — bloquea acentos/ñ/espacios/símbolos
+// que nunca pueden ser parte de una dirección válida, sin esperar a la
+// validación de zod al guardar (pedido 2026-09-16: "email: mask email").
+export function sanitizeEmailInput(raw: string): string {
+  return raw.replace(/[^a-zA-Z0-9@._+-]/g, "");
 }

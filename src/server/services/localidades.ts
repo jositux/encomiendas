@@ -1,6 +1,6 @@
 import "server-only";
 
-import { apiFetch } from "../api-client";
+import { apiFetch, apiFetchColeccion } from "../api-client";
 import { requireToken } from "./shared";
 import { listProvincias } from "./provincias";
 import type { LocalidadBackend } from "@/types";
@@ -37,11 +37,32 @@ async function provinciaMap(): Promise<Map<string, string>> {
 
 export async function listLocalidades(): Promise<LocalidadBackend[]> {
   const token = await requireToken();
-  const [items, provincias] = await Promise.all([
-    apiFetch<LocalidadApi[]>("/localidades", { token }),
+  const [pagina, provincias] = await Promise.all([
+    // Catalogo: sin limite=200 explicito, el backend trunca a 50 (default).
+    apiFetchColeccion<LocalidadApi>("/localidades?limite=200", { token }),
     provinciaMap(),
   ]);
-  return items.map((item) => toLocalidad(item, provincias));
+  return pagina.datos.map((item) => toLocalidad(item, provincias));
+}
+
+// 2026-09-17 (sección 27.1 del plan de integración): mismo patrón de
+// `listUsuariosSeguro()` (services/usuarios.ts) — roles sin `geografia:leer`
+// (ej. chofer_obera) reciben 403 acá, y varias pantallas (Seguimiento,
+// Custodia, Puntos vía localidadMap) solo usan esta lista para selectores o
+// para resolver un nombre "best-effort", no como precondición dura. Antes
+// un 403 acá tiraba abajo la pantalla ENTERA (Server Component sin atrapar
+// el ApiError) — con esta variante la pantalla carga igual y el selector/
+// nombre queda vacío o en "—" en vez de romper todo.
+export async function listLocalidadesSeguro(): Promise<LocalidadBackend[]> {
+  try {
+    return await listLocalidades();
+  } catch (err) {
+    console.error(
+      "No se pudo cargar GET /localidades (la pantalla sigue funcionando, pero sin selector/nombres de localidad donde correspondan):",
+      err
+    );
+    return [];
+  }
 }
 
 export async function createLocalidad(data: {
