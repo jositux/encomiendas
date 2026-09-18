@@ -6,13 +6,9 @@ import {
   Inbox,
   PackageSearch,
   Users,
-  Wallet,
-  Landmark,
-  ShieldCheck,
   Car,
   UserRound,
   Map,
-  CreditCard,
   Search,
   ClipboardList,
   Scissors,
@@ -107,35 +103,6 @@ export const NAV_GROUPS: NavGroup[] = [
         // para cualquier usuario logueado, como la mayoría de los ítems de
         // este menú, hasta que se confirme en vivo con una cuenta que
         // debería tenerlo (operador) y una que no (chofer).
-      },
-    ],
-  },
-  {
-    label: "Cajas",
-    items: [
-      {
-        title: "Cierre de caja",
-        href: "/cajas",
-        icon: Wallet,
-        description: "Rendición diaria de un repartidor",
-      },
-      {
-        title: "Control de cajas",
-        href: "/cajas/control",
-        icon: Landmark,
-        description: "Panel administrativo de rendiciones",
-      },
-      {
-        title: "CRR",
-        href: "/crr",
-        icon: ShieldCheck,
-        description: "Contra reembolso: cobros pendientes y rendidos",
-      },
-      {
-        title: "Mercado Pago",
-        href: "/mercadopago",
-        icon: CreditCard,
-        description: "Cobros digitales y conciliación",
       },
     ],
   },
