@@ -149,10 +149,10 @@ export const NAV_GROUPS: NavGroup[] = [
         description: "Base de clientes y cuentas corrientes",
       },
       {
-        title: "Personal",
-        href: "/personal",
+        title: "Usuarios y roles",
+        href: "/usuarios",
         icon: UserRound,
-        description: "Empleados, roles y permisos",
+        description: "Accesos reales al sistema: usuarios, roles y permisos",
       },
     ],
   },

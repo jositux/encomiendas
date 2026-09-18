@@ -15,7 +15,6 @@
 
 export * from "./encomiendas";
 export * from "./clientes";
-export * from "./personal";
 export * from "./vehiculos";
 export * from "./puntos";
 export * from "./localidades";
@@ -26,6 +25,9 @@ export * from "./envios";
 export * from "./seguimiento";
 export * from "./chofer";
 export * from "./despachos";
+export * from "./usuarios";
+export * from "./roles";
+export * from "./consultas";
 export * from "./cajas";
 export * from "./crr";
 export * from "./demo";

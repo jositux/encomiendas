@@ -3,11 +3,15 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Truck, PackageCheck, Inbox, FileSpreadsheet } from "lucide-react";
+import { RefreshCw, AlertTriangle, Clock3, Search, X } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable } from "@/components/shared/data-table";
-import { EstadoBadge, TipoBadge } from "@/components/shared/status-badge";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -15,288 +19,433 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { EncomiendaDetailSheet } from "@/components/encomiendas/encomienda-detail-sheet";
-import { encomiendaMatches } from "@/components/encomiendas/encomienda-table";
-import { updateEncomiendaAction } from "@/server/actions";
-import { localidadNombre } from "@/lib/mock/localidades";
-import { sucursalNombre } from "@/lib/mock/sucursales";
-import { personalNombre } from "@/lib/mock/personal";
-import { ESTADO_LABEL, TIPO_LABEL } from "@/lib/mock/encomiendas";
-import { formatDate } from "@/lib/format";
-import { exportToXlsx, type ExportColumn } from "@/lib/spreadsheet-export";
-import type { Encomienda, EstadoEncomienda, Personal } from "@/types";
+import { FilaAcciones } from "@/components/deposito/fila-acciones";
+import {
+  consultarEnviosAction,
+  listFallidosAction,
+  listConfirmacionesPendientesAction,
+} from "@/server/actions";
+import { formatDate, formatDateTime } from "@/lib/format";
+import type {
+  EstadoEnvio,
+  PaginaEnvios,
+  EnvioConFallidosApi,
+  PendienteConfirmacionApi,
+} from "@/server/services/consultas";
+import type { EnvioApi } from "@/server/services/envios";
+import type { SectorApi } from "@/server/services/sectores";
+import type { UsuarioApi } from "@/server/services/usuarios";
+import type { LocalidadBackend } from "@/types";
 
-type TabKey = "PENDIENTE" | "EN_TRANSITO" | "PARA_ENTREGAR" | "ENTREGADA" | "DEVUELTA" | "TODAS";
+// Pantalla real de Depósito (reemplaza la vieja pantalla 100% mock) —
+// contrato completo del equipo de backend, "Nota 1 — Pantalla de
+// Depósito" (2026-09-18), ver claude/plan-integracion-backend.md sección
+// 35. Reglas clave que este archivo respeta:
+//   1. Un solo endpoint (`GET /consultas/envios`) alimenta las 6 pestañas
+//      principales — las pestañas se arman con `estado` + `ubicacion` de
+//      cada fila, NUNCA con un estado propio inventado del lado del
+//      cliente (por eso "En tránsito"/"Para entregar" piden el MISMO
+//      estado EN_CUSTODIA y se separan acá abajo por `ubicacion`, ya que
+//      el backend no tiene un query param `ubicacion`).
+//   2. Dos pestañas más, de solo lectura, para que los casos no se
+//      acumulen en silencio: Fallidos (`GET /consultas/fallidos`) y
+//      Confirmaciones pendientes (`GET /confirmaciones/pendientes`).
+//   3. Nada se borra: "Anular" dejó un evento a nombre de quien lo hizo.
+//   4. Después de cada mutación se refresca la pestaña actual pidiendo
+//      datos de nuevo — nunca se mueve una fila "a mano" del lado del
+//      cliente.
+//   5. "Devolver" queda explícitamente FUERA de esta primera etapa
+//      (nota del backend: "hablemos antes de implementar algo").
+type BadgeVariant = "default" | "secondary" | "outline" | "destructive" | "success" | "warning" | "info";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "PENDIENTE", label: "Pendientes" },
-  { key: "EN_TRANSITO", label: "En tránsito" },
-  { key: "PARA_ENTREGAR", label: "Para entregar" },
-  { key: "ENTREGADA", label: "Entregadas" },
-  { key: "DEVUELTA", label: "Devueltas" },
-  { key: "TODAS", label: "Todas" },
-];
-
-const NEXT_ACTION: Partial<
-  Record<
-    EstadoEncomienda,
-    {
-      next: EstadoEncomienda;
-      label: string;
-      icon: typeof Truck;
-      variant?: "default" | "success" | "outline";
-      toastLabel: string;
-    }
-  >
-> = {
-  PENDIENTE: { next: "EN_TRANSITO", label: "Levantar", icon: Truck, toastLabel: "marcada en tránsito" },
-  EN_TRANSITO: {
-    next: "PARA_ENTREGAR",
-    label: "Recibir",
-    icon: PackageCheck,
-    variant: "success",
-    toastLabel: "recibida en depósito",
-  },
-  PARA_ENTREGAR: {
-    next: "ENTREGADA",
-    label: "Marcar entregada",
-    icon: PackageCheck,
-    variant: "success",
-    toastLabel: "marcada como entregada",
-  },
+const ESTADO_LABEL: Record<string, string> = {
+  ALTA_INCOMPLETA: "Alta incompleta",
+  REGISTRADO: "Registrado",
+  EN_CUSTODIA: "En custodia",
+  ENTREGADO: "Entregado",
+  CONFIRMADO: "Confirmado",
+  ANULADO: "Anulado",
 };
 
-const EXPORT_COLUMNS: ExportColumn<Encomienda>[] = [
-  { header: "Remito", value: (e) => e.remito, width: 12 },
-  { header: "Fecha", value: (e) => formatDate(e.fechaAlta), width: 10 },
-  { header: "Remitente", value: (e) => e.origen.nombre, width: 22 },
-  { header: "Teléfono remitente", value: (e) => e.origen.telefono, width: 16 },
-  { header: "Destinatario", value: (e) => e.destino.nombre, width: 22 },
-  { header: "Teléfono destinatario", value: (e) => e.destino.telefono, width: 16 },
-  { header: "Dirección destino", value: (e) => e.destino.direccion, width: 26 },
-  { header: "Localidad destino", value: (e) => localidadNombre(e.destino.localidadId), width: 16 },
-  { header: "Tipo", value: (e) => TIPO_LABEL[e.tipo], width: 16 },
-  { header: "Estado", value: (e) => ESTADO_LABEL[e.estado], width: 14 },
-  { header: "Designado", value: (e) => personalNombre(e.designadoId), width: 18 },
-  { header: "Bultos", value: (e) => e.bultos, width: 8 },
-  { header: "Flete", value: (e) => e.flete, width: 10 },
-  { header: "Monto CRR", value: (e) => e.montoCrr ?? "", width: 12 },
+const ESTADO_VARIANT: Record<string, BadgeVariant> = {
+  ALTA_INCOMPLETA: "outline",
+  REGISTRADO: "secondary",
+  EN_CUSTODIA: "info",
+  ENTREGADO: "warning",
+  CONFIRMADO: "success",
+  ANULADO: "destructive",
+};
+
+const UBICACION_LABEL: Record<string, string> = {
+  en_origen: "En origen",
+  en_transito: "En tránsito",
+  en_deposito: "En depósito",
+  en_base_destino: "En base destino",
+  en_reparto: "En reparto",
+  entregado: "Entregado",
+  confirmado: "Confirmado",
+  anulado: "Anulado",
+  alta_incompleta: "Alta incompleta",
+};
+
+const UBICACION_VARIANT: Record<string, BadgeVariant> = {
+  en_origen: "secondary",
+  en_transito: "info",
+  en_deposito: "secondary",
+  en_base_destino: "info",
+  en_reparto: "warning",
+  entregado: "success",
+  confirmado: "success",
+  anulado: "destructive",
+  alta_incompleta: "outline",
+};
+
+// La guía real (letra+número, ej. "C1") que usa el negocio en mostrador
+// viene en `guiaDiaria` — no en `numero` (correlativo interno). Mismo
+// criterio ya confirmado y usado en custodia-view.tsx/nueva-view.tsx.
+function guiaDeEnvio(e: EnvioApi): string {
+  return (e.guiaDiaria as string | undefined) || e.numero || e.id?.slice(0, 8) || "—";
+}
+
+type TabKey =
+  | "pendientes"
+  | "en_transito"
+  | "para_entregar"
+  | "entregadas"
+  | "confirmadas"
+  | "anuladas"
+  | "fallidos"
+  | "confirmaciones";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "pendientes", label: "Pendientes" },
+  { key: "en_transito", label: "En tránsito" },
+  { key: "para_entregar", label: "Para entregar" },
+  { key: "entregadas", label: "Entregadas" },
+  { key: "confirmadas", label: "Confirmadas" },
+  { key: "anuladas", label: "Anuladas" },
+  { key: "fallidos", label: "Fallidos" },
+  { key: "confirmaciones", label: "Conf. pendientes" },
 ];
 
-export function DepositoView({
-  encomiendas,
-  repartidores,
-  sucursalId,
-}: {
-  encomiendas: Encomienda[];
-  repartidores: Personal[];
-  sucursalId: string | null;
-}) {
-  const [tab, setTab] = React.useState<TabKey>("PENDIENTE");
-  const [busyId, setBusyId] = React.useState<string | null>(null);
-  const [selected, setSelected] = React.useState<Encomienda | null>(null);
-  const [open, setOpen] = React.useState(false);
-  // Radix Select cierra su listbox en el pointerdown, y el click resultante
-  // "cae" sobre lo que haya debajo del cursor una vez cerrado — en esta
-  // vista, la fila de la tabla, que abre el detalle. Esto no pasaba en la
-  // vieja pantalla de Designaciones porque esa tabla no tenía onRowClick.
-  // Se ignora el próximo click de fila justo después de elegir un
-  // repartidor en el Select inline.
-  const suppressRowClickRef = React.useRef(false);
+// Pestaña -> `estado` real que se pide a /consultas/envios. "en_transito" y
+// "para_entregar" comparten el mismo estado (EN_CUSTODIA); se separan más
+// abajo por `ubicacion` (regla 1 del comentario de arriba).
+const ESTADO_POR_TAB: Partial<Record<TabKey, EstadoEnvio>> = {
+  pendientes: "REGISTRADO",
+  en_transito: "EN_CUSTODIA",
+  para_entregar: "EN_CUSTODIA",
+  entregadas: "ENTREGADO",
+  confirmadas: "CONFIRMADO",
+  anuladas: "ANULADO",
+};
 
-  // Las eliminadas (soft-delete, vía "Eliminar" en el detalle) nunca se
-  // listan acá — mismo comportamiento que tenían las 5 pantallas viejas.
-  const activas = React.useMemo(
-    () => encomiendas.filter((e) => e.estado !== "ELIMINADA"),
-    [encomiendas]
+function esTabDeEnvios(tab: TabKey): boolean {
+  return tab in ESTADO_POR_TAB;
+}
+
+export function DepositoView({
+  inicial,
+  localidades,
+  sectores,
+  usuarios,
+  permisos,
+}: {
+  inicial: PaginaEnvios;
+  localidades: LocalidadBackend[];
+  sectores: SectorApi[];
+  usuarios: UsuarioApi[];
+  permisos: string[];
+}) {
+  const [tab, setTab] = React.useState<TabKey>("pendientes");
+  const [cargando, setCargando] = React.useState(false);
+  const [envios, setEnvios] = React.useState<EnvioApi[]>(inicial.datos);
+  const [fallidos, setFallidos] = React.useState<EnvioConFallidosApi[]>([]);
+  const [pendientesConfirmar, setPendientesConfirmar] = React.useState<PendienteConfirmacionApi[]>([]);
+
+  // Filtros de /consultas/envios (pestañas principales).
+  const [numero, setNumero] = React.useState("");
+  const [guia, setGuia] = React.useState("");
+  const [fechaGuia, setFechaGuia] = React.useState("");
+  const [localidadDestinoId, setLocalidadDestinoId] = React.useState("__todas");
+  const [desde, setDesde] = React.useState("");
+  const [hasta, setHasta] = React.useState("");
+
+  // Filtro propio de Confirmaciones pendientes.
+  const [fechaConfirmaciones, setFechaConfirmaciones] = React.useState("");
+  const [choferId, setChoferId] = React.useState("__todos");
+
+  const localidadNombre = React.useCallback(
+    (id: string) => localidades.find((l) => l.id === id)?.nombre ?? "—",
+    [localidades]
   );
 
-  const rowsByTab = React.useMemo(() => {
-    const map = new Map<TabKey, Encomienda[]>();
-    for (const t of TABS) {
-      map.set(
-        t.key,
-        t.key === "TODAS" ? activas : activas.filter((e) => e.estado === t.key)
-      );
+  const cargarEnvios = React.useCallback(
+    async (t: TabKey) => {
+      const estado = ESTADO_POR_TAB[t];
+      if (!estado) return;
+      setCargando(true);
+      try {
+        const pagina = await consultarEnviosAction({
+          estado,
+          numero: numero.trim() || undefined,
+          guia: guia.trim() || undefined,
+          fecha: guia.trim() ? fechaGuia || undefined : undefined,
+          localidadDestinoId: localidadDestinoId === "__todas" ? undefined : localidadDestinoId,
+          desde: desde || undefined,
+          hasta: hasta || undefined,
+        });
+        setEnvios(pagina.datos);
+      } catch (err) {
+        toast.error("No se pudo cargar la lista de envíos", {
+          description: err instanceof Error ? err.message : undefined,
+        });
+      } finally {
+        setCargando(false);
+      }
+    },
+    [numero, guia, fechaGuia, localidadDestinoId, desde, hasta]
+  );
+
+  const cargarFallidos = React.useCallback(async () => {
+    setCargando(true);
+    try {
+      const datos = await listFallidosAction({
+        localidadDestinoId: localidadDestinoId === "__todas" ? undefined : localidadDestinoId,
+      });
+      setFallidos(datos);
+    } catch (err) {
+      toast.error("No se pudo cargar los envíos con intentos fallidos", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setCargando(false);
     }
-    return map;
-  }, [activas]);
+  }, [localidadDestinoId]);
 
-  const rows = rowsByTab.get(tab) ?? [];
-
-  async function avanzar(e: Encomienda) {
-    const accion = NEXT_ACTION[e.estado];
-    if (!accion) return;
-    setBusyId(e.id);
-    await updateEncomiendaAction(e.id, {
-      estado: accion.next,
-      sucursalId: accion.next === "PARA_ENTREGAR" ? (sucursalId ?? e.sucursalId) : e.sucursalId,
-      fechaFinalizado: accion.next === "ENTREGADA" ? new Date().toISOString() : e.fechaFinalizado,
-      fechaBaja: accion.next === "ENTREGADA" ? new Date().toISOString() : e.fechaBaja,
-    });
-    setBusyId(null);
-    toast.success(`Encomienda #${e.remito} ${accion.toastLabel}`);
-  }
-
-  async function avanzarLote(items: Encomienda[]) {
-    if (items.length === 0) return;
-    await Promise.all(items.map((e) => avanzar(e)));
-  }
-
-  async function asignar(e: Encomienda, personalId: string) {
-    await updateEncomiendaAction(e.id, { designadoId: personalId });
-    const persona = repartidores.find((p) => p.id === personalId);
-    toast.success(`#${e.remito} asignada a ${persona?.apellidoNombre ?? "repartidor"}`);
-  }
-
-  function handleExport() {
-    if (rows.length === 0) {
-      toast.error("No hay encomiendas para exportar en esta pestaña.");
-      return;
+  const cargarConfirmaciones = React.useCallback(async () => {
+    setCargando(true);
+    try {
+      const datos = await listConfirmacionesPendientesAction({
+        fecha: fechaConfirmaciones || undefined,
+        choferId: choferId === "__todos" ? undefined : choferId,
+      });
+      setPendientesConfirmar(datos);
+    } catch (err) {
+      toast.error("No se pudo cargar las confirmaciones pendientes", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setCargando(false);
     }
-    const fecha = new Date().toISOString().slice(0, 10);
-    const tabInfo = TABS.find((t) => t.key === tab)!;
-    exportToXlsx(
-      `deposito-${tab.toLowerCase()}-${fecha}.xlsx`,
-      tabInfo.label,
-      EXPORT_COLUMNS,
-      rows
-    );
-    toast.success(`${rows.length} encomienda${rows.length === 1 ? "" : "s"} exportada${rows.length === 1 ? "" : "s"}.`);
+  }, [fechaConfirmaciones, choferId]);
+
+  const refrescarTabActual = React.useCallback(async () => {
+    if (esTabDeEnvios(tab)) await cargarEnvios(tab);
+    else if (tab === "fallidos") await cargarFallidos();
+    else await cargarConfirmaciones();
+  }, [tab, cargarEnvios, cargarFallidos, cargarConfirmaciones]);
+
+  // Al cambiar de pestaña se vuelve a pedir esa pestaña — excepto la
+  // primera vez con "Pendientes", que ya llega resuelta desde el servidor
+  // (page.tsx). El `useEffect` no hace ningún `setState` síncrono propio:
+  // solo dispara la función async de arriba, que ya maneja su propio
+  // loading/error — evita el problema de `react-hooks/set-state-in-effect`.
+  const primerRender = React.useRef(true);
+  React.useEffect(() => {
+    if (primerRender.current) {
+      primerRender.current = false;
+      if (tab === "pendientes") return;
+    }
+    void refrescarTabActual();
+    // Deliberado: solo se dispara al cambiar de pestaña. Cambiar un filtro
+    // no dispara esto solo — el usuario confirma con "Buscar" (abajo), para
+    // no golpear al backend en cada tecla.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  function buscar() {
+    void refrescarTabActual();
   }
 
-  const columns = React.useMemo<ColumnDef<Encomienda>[]>(
+  function limpiarFiltros() {
+    setNumero("");
+    setGuia("");
+    setFechaGuia("");
+    setLocalidadDestinoId("__todas");
+    setDesde("");
+    setHasta("");
+  }
+
+  // "En tránsito" vs "Para entregar" — mismo `estado` (EN_CUSTODIA),
+  // separados acá por `ubicacion` de cada fila (regla 1, arriba).
+  const enviosVisibles = React.useMemo(() => {
+    if (tab === "en_transito") return envios.filter((e) => e.ubicacion !== "en_reparto");
+    if (tab === "para_entregar") return envios.filter((e) => e.ubicacion === "en_reparto");
+    return envios;
+  }, [envios, tab]);
+
+  const columnasEnvios = React.useMemo<ColumnDef<EnvioApi>[]>(
     () => [
       {
-        accessorKey: "remito",
-        header: "Remito",
-        cell: ({ row }) => <span className="font-mono font-medium">#{row.original.remito}</span>,
-      },
-      { accessorKey: "fechaAlta", header: "Fecha", cell: ({ row }) => formatDate(row.original.fechaAlta) },
-      {
-        id: "origen",
-        header: "Origen",
+        id: "guia",
+        header: "Guía",
         cell: ({ row }) => (
           <div>
-            <p className="max-w-36 truncate">{row.original.origen.nombre}</p>
-            <p className="text-xs text-muted-foreground">
-              {sucursalNombre(row.original.sucursalId)}
-            </p>
+            <span className="font-mono font-semibold">#{guiaDeEnvio(row.original)}</span>
+            <p className="text-xs text-muted-foreground">{row.original.numero}</p>
           </div>
         ),
       },
       {
-        id: "destinatario",
-        header: "Destinatario",
+        id: "trayecto",
+        header: "Remitente → Destinatario",
         cell: ({ row }) => (
-          <div>
-            <p className="max-w-40 truncate font-medium">{row.original.destino.nombre}</p>
-            <p className="text-xs text-muted-foreground">
-              {localidadNombre(row.original.destino.localidadId)}
-            </p>
-          </div>
+          <span className="text-sm">
+            {row.original.remitenteNombre || "—"} → {row.original.destinatarioNombre || "—"}
+          </span>
         ),
       },
-      { accessorKey: "tipo", header: "Tipo", cell: ({ row }) => <TipoBadge tipo={row.original.tipo} /> },
       {
-        accessorKey: "estado",
+        id: "destino",
+        header: "Destino",
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {localidadNombre(row.original.localidadDestinoId)}
+          </span>
+        ),
+      },
+      {
+        id: "estado",
         header: "Estado",
-        cell: ({ row }) => <EstadoBadge estado={row.original.estado} />,
+        cell: ({ row }) => (
+          <Badge variant={ESTADO_VARIANT[row.original.estadoActual] ?? "outline"}>
+            {ESTADO_LABEL[row.original.estadoActual] ?? row.original.estadoActual}
+          </Badge>
+        ),
       },
       {
-        id: "designado",
-        header: "Designado",
-        cell: ({ row }) =>
-          row.original.estado === "PARA_ENTREGAR" ? (
-            <Select
-              value={row.original.designadoId ?? "none"}
-              onValueChange={(v) => {
-                suppressRowClickRef.current = true;
-                window.setTimeout(() => {
-                  suppressRowClickRef.current = false;
-                }, 300);
-                asignar(row.original, v);
-              }}
-            >
-              <SelectTrigger className="w-44" onClick={(ev) => ev.stopPropagation()}>
-                <SelectValue placeholder="Sin designar" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none" disabled>
-                  Sin designar
-                </SelectItem>
-                {repartidores.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.apellidoNombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <span className="text-muted-foreground">{personalNombre(row.original.designadoId)}</span>
-          ),
+        id: "ubicacion",
+        header: "Ubicación",
+        cell: ({ row }) => (
+          <Badge variant={UBICACION_VARIANT[row.original.ubicacion] ?? "outline"}>
+            {UBICACION_LABEL[row.original.ubicacion] ?? row.original.ubicacion}
+          </Badge>
+        ),
+      },
+      {
+        id: "fecha",
+        header: "Alta",
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">{formatDate(row.original.creadoEn)}</span>
+        ),
       },
       {
         id: "acciones",
         header: "",
-        cell: ({ row }) => {
-          const accion = NEXT_ACTION[row.original.estado];
-          if (!accion) return null;
-          const Icon = accion.icon;
-          return (
-            <Button
-              size="sm"
-              variant={accion.variant ?? "default"}
-              className="gap-1.5"
-              disabled={busyId === row.original.id}
-              onClick={(ev) => {
-                ev.stopPropagation();
-                avanzar(row.original);
-              }}
-            >
-              <Icon className="size-3.5" /> {accion.label}
-            </Button>
-          );
-        },
+        cell: ({ row }) => (
+          <FilaAcciones
+            envio={row.original}
+            sectores={sectores}
+            usuarios={usuarios}
+            permisos={permisos}
+            onRefrescar={refrescarTabActual}
+          />
+        ),
       },
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [repartidores, busyId, sucursalId]
+    [localidadNombre, sectores, usuarios, permisos, refrescarTabActual]
   );
 
-  const toolbar =
-    tab === "PENDIENTE" ? (
-      <Button
-        variant="outline"
-        size="sm"
-        className="gap-1.5"
-        disabled={rows.length === 0}
-        onClick={() => avanzarLote(rows)}
-      >
-        <Truck className="size-3.5" /> Levantar todas ({rows.length})
-      </Button>
-    ) : tab === "EN_TRANSITO" ? (
-      <Button
-        variant="outline"
-        size="sm"
-        className="gap-1.5"
-        disabled={rows.length === 0}
-        onClick={() => avanzarLote(rows)}
-      >
-        <Inbox className="size-3.5" /> Recibir todo ({rows.length})
-      </Button>
-    ) : undefined;
+  const columnasFallidos = React.useMemo<ColumnDef<EnvioConFallidosApi>[]>(
+    () => [
+      {
+        id: "numero",
+        header: "Envío",
+        cell: ({ row }) => <span className="font-mono font-semibold">{row.original.numero}</span>,
+      },
+      {
+        id: "destino",
+        header: "Destino",
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {localidadNombre(row.original.localidadDestinoId)}
+          </span>
+        ),
+      },
+      {
+        id: "intentos",
+        header: "Intentos",
+        cell: ({ row }) => (
+          <Badge variant={row.original.cantidadIntentos >= 3 ? "destructive" : "warning"}>
+            <AlertTriangle className="size-3" /> {row.original.cantidadIntentos}
+          </Badge>
+        ),
+      },
+      {
+        id: "motivo",
+        header: "Último motivo",
+        cell: ({ row }) => <span className="text-sm">{row.original.ultimoMotivo || "—"}</span>,
+      },
+      {
+        id: "ultimoIntento",
+        header: "Último intento",
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">{formatDateTime(row.original.ultimoIntentoEn)}</span>
+        ),
+      },
+    ],
+    [localidadNombre]
+  );
+
+  const columnasConfirmaciones = React.useMemo<ColumnDef<PendienteConfirmacionApi>[]>(
+    () => [
+      {
+        id: "numero",
+        header: "Envío",
+        cell: ({ row }) => <span className="font-mono font-semibold">{row.original.numero}</span>,
+      },
+      {
+        id: "destinatario",
+        header: "Destinatario",
+        cell: ({ row }) => <span className="text-sm">{row.original.destinatarioNombre || "—"}</span>,
+      },
+      {
+        id: "recibidoPor",
+        header: "Recibido por",
+        cell: ({ row }) => <span className="text-sm">{row.original.recibidoPor || "—"}</span>,
+      },
+      {
+        id: "entregadoEn",
+        header: "Entregado",
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">{formatDateTime(row.original.entregadoEn)}</span>
+        ),
+      },
+      {
+        id: "chofer",
+        header: "Chofer",
+        cell: ({ row }) => (
+          <Badge variant="info" className="gap-1">
+            <Clock3 className="size-3" /> {row.original.choferNombre || "—"}
+          </Badge>
+        ),
+      },
+    ],
+    []
+  );
+
+  const esTabPrincipal = esTabDeEnvios(tab);
 
   return (
     <div>
       <PageHeader
         title="Depósito"
-        description="Recepción, designaciones, devoluciones y encomiendas activas en un solo lugar."
+        description="Vista operativa de los envíos en tu punto — todo el dato sale de /consultas/envios; las pestañas siguen estado + ubicación reales, no un estado propio."
         actions={
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExport}>
-            <FileSpreadsheet className="size-3.5" /> Exportar a Excel
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={buscar} disabled={cargando}>
+            <RefreshCw className={cargando ? "size-4 animate-spin" : "size-4"} /> Actualizar
           </Button>
         }
       />
@@ -305,37 +454,191 @@ export function DepositoView({
         <TabsList className="flex-wrap h-auto">
           {TABS.map((t) => (
             <TabsTrigger key={t.key} value={t.key}>
-              {t.label} ({(rowsByTab.get(t.key) ?? []).length})
+              {t.label}
             </TabsTrigger>
           ))}
         </TabsList>
       </Tabs>
 
-      <DataTable
-        columns={columns}
-        data={rows}
-        searchPlaceholder="Buscar por remito, cliente, destino o teléfono..."
-        globalFilterFn={encomiendaMatches}
-        emptyTitle="No hay encomiendas"
-        emptyDescription="No encontramos encomiendas para esta pestaña."
-        toolbar={toolbar}
-        pageSize={12}
-        onRowClick={(e) => {
-          if (suppressRowClickRef.current) {
-            suppressRowClickRef.current = false;
-            return;
-          }
-          setSelected(e);
-          setOpen(true);
-        }}
-      />
+      {esTabPrincipal && (
+        <Card className="mb-4">
+          <CardContent className="flex flex-wrap items-end gap-3 py-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="dep-f-numero">Número</Label>
+              <Input
+                id="dep-f-numero"
+                className="w-36"
+                value={numero}
+                onChange={(e) => setNumero(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && buscar()}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="dep-f-guia">Guía</Label>
+              <Input
+                id="dep-f-guia"
+                className="w-28"
+                value={guia}
+                onChange={(e) => setGuia(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && buscar()}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="dep-f-fecha-guia">Fecha de guía</Label>
+              <Input
+                id="dep-f-fecha-guia"
+                type="date"
+                className="w-40"
+                value={fechaGuia}
+                onChange={(e) => setFechaGuia(e.target.value)}
+                disabled={!guia.trim()}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Localidad destino</Label>
+              <Select value={localidadDestinoId} onValueChange={setLocalidadDestinoId}>
+                <SelectTrigger className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__todas">Todas</SelectItem>
+                  {localidades.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="dep-f-desde">Desde</Label>
+              <Input
+                id="dep-f-desde"
+                type="date"
+                className="w-40"
+                value={desde}
+                onChange={(e) => setDesde(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="dep-f-hasta">Hasta</Label>
+              <Input
+                id="dep-f-hasta"
+                type="date"
+                className="w-40"
+                value={hasta}
+                onChange={(e) => setHasta(e.target.value)}
+              />
+            </div>
+            <Button size="sm" className="gap-1.5" onClick={buscar} disabled={cargando}>
+              <Search className="size-4" /> Buscar
+            </Button>
+            <Button size="sm" variant="ghost" className="gap-1.5" onClick={limpiarFiltros}>
+              <X className="size-4" /> Limpiar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-      <EncomiendaDetailSheet
-        encomienda={selected}
-        open={open}
-        onOpenChange={setOpen}
-        sucursalId={sucursalId}
-      />
+      {tab === "fallidos" && (
+        <Card className="mb-4">
+          <CardContent className="flex flex-wrap items-end gap-3 py-4">
+            <div className="grid gap-1.5">
+              <Label>Localidad destino</Label>
+              <Select value={localidadDestinoId} onValueChange={setLocalidadDestinoId}>
+                <SelectTrigger className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__todas">Todas</SelectItem>
+                  {localidades.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button size="sm" className="gap-1.5" onClick={buscar} disabled={cargando}>
+              <Search className="size-4" /> Buscar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === "confirmaciones" && (
+        <Card className="mb-4">
+          <CardContent className="flex flex-wrap items-end gap-3 py-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="dep-f-fecha-conf">Fecha</Label>
+              <Input
+                id="dep-f-fecha-conf"
+                type="date"
+                className="w-40"
+                value={fechaConfirmaciones}
+                onChange={(e) => setFechaConfirmaciones(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Chofer</Label>
+              <Select value={choferId} onValueChange={setChoferId}>
+                <SelectTrigger className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__todos">Todos</SelectItem>
+                  {usuarios.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button size="sm" className="gap-1.5" onClick={buscar} disabled={cargando}>
+              <Search className="size-4" /> Buscar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {esTabPrincipal && (
+        <>
+          <p className="mb-2 text-xs text-muted-foreground">
+            {enviosVisibles.length} resultado{enviosVisibles.length === 1 ? "" : "s"}
+          </p>
+          <DataTable
+            columns={columnasEnvios}
+            data={enviosVisibles}
+            searchPlaceholder="Buscar en esta pestaña..."
+            emptyTitle="Sin envíos"
+            emptyDescription="No hay envíos que coincidan con esta pestaña y estos filtros."
+            pageSize={15}
+          />
+        </>
+      )}
+
+      {tab === "fallidos" && (
+        <DataTable
+          columns={columnasFallidos}
+          data={fallidos}
+          searchPlaceholder="Buscar..."
+          emptyTitle="Sin intentos fallidos"
+          emptyDescription="No hay envíos en custodia con intentos de entrega fallidos."
+          pageSize={15}
+        />
+      )}
+
+      {tab === "confirmaciones" && (
+        <DataTable
+          columns={columnasConfirmaciones}
+          data={pendientesConfirmar}
+          searchPlaceholder="Buscar..."
+          emptyTitle="Sin confirmaciones pendientes"
+          emptyDescription="No hay entregas del día esperando confirmación."
+          pageSize={15}
+        />
+      )}
     </div>
   );
 }
