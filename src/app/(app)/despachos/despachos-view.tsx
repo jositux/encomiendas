@@ -31,11 +31,17 @@ import type { PlanillaGenerada } from "@/server/services/custodia";
 // mandar nada).
 export function DespachosView({
   recorridos,
+  sinRecorridosPorAlcance,
   vehiculos,
   usuarios,
   permisos,
 }: {
   recorridos: RecorridoBackend[];
+  // 2026-09-18 (Nota 3): true cuando `recorridos` viene vacío porque el
+  // usuario no es `esGlobal` y ninguno de los recorridos activos sale de
+  // una base en su `puntosEnAlcance` — a diferencia de que simplemente no
+  // haya ningún recorrido activo en todo el sistema.
+  sinRecorridosPorAlcance: boolean;
   vehiculos: VehiculoBackend[];
   usuarios: UsuarioApi[];
   // 2026-09-18: gatea el botón "Cortar / Declarar salida" — confirmado en
@@ -44,6 +50,16 @@ export function DespachosView({
   permisos: string[];
 }) {
   const puedeCortar = permisos.includes("despachos:crear");
+  // Nota 3 (2026-09-18): `recorridos` ya llega acotado a `puntosEnAlcance`
+  // desde page.tsx (o completo si el usuario es `esGlobal`). Acá solo se
+  // decide si vale la pena mostrar la base en la etiqueta de cada opción:
+  // con un solo depósito en juego es redundante, pero si el combo mezcla
+  // más de una base (usuario global, o con varios puntos en alcance) hace
+  // falta que quede claro desde dónde sale cada recorrido.
+  const mostrarBase = React.useMemo(
+    () => new Set(recorridos.map((r) => r.baseId)).size > 1,
+    [recorridos]
+  );
   const [recorridoId, setRecorridoId] = React.useState(recorridos[0]?.id ?? "");
   const [vehiculoId, setVehiculoId] = React.useState<string | null>(null);
   const [choferId, setChoferId] = React.useState<string | null>(null);
@@ -85,7 +101,9 @@ export function DespachosView({
         <CardContent className="flex flex-col gap-4 pt-6">
           {recorridos.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No hay recorridos activos. Creá uno en Rutas antes de cortar un despacho.
+              {sinRecorridosPorAlcance
+                ? "No hay recorridos activos que salgan de tu base. Pedí que te asignen a la base correspondiente, o cortá desde una cuenta con acceso a esa base."
+                : "No hay recorridos activos. Creá uno en Rutas antes de cortar un despacho."}
             </p>
           ) : (
             <>
@@ -106,7 +124,7 @@ export function DespachosView({
                   <SelectContent>
                     {recorridos.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
-                        {r.nombre} · {r.baseNombre}
+                        {mostrarBase ? `${r.nombre} · ${r.baseNombre}` : r.nombre}
                       </SelectItem>
                     ))}
                   </SelectContent>
