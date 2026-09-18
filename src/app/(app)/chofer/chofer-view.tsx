@@ -40,12 +40,14 @@ import {
   buscarPlanillaPorCodigoAction,
   cargarPlanillaAction,
   recibirPlanillaAction,
+  recibirEnvioSueltoAction,
   entregarEnvioAction,
   registrarIntentoFallidoAction,
   registrarIncidenciaAction,
   buscarSeguimientoAction,
 } from "@/server/actions";
 import type { DespachoApi, PlanillaApi, EnvioDePlanillaApi } from "@/server/services/custodia";
+import type { EnvioApi } from "@/server/services/envios";
 import type { LocalidadBackend } from "@/types";
 
 // Un envío deja de aparecer en `planilla.envios` apenas la planilla pasa a
@@ -97,6 +99,7 @@ export function ChoferView({
   localidades,
   puedeVerDespachos,
   permisos,
+  usuarioId,
 }: {
   despachos: DespachoApi[];
   localidades: LocalidadBackend[];
@@ -114,6 +117,10 @@ export function ChoferView({
   // real, y el usuario recién se enteraba de que le faltaba al clickear y
   // recibir el toast de error del backend.
   permisos: string[];
+  // 2026-09-17 (sección 31 del plan): para decidir en BuscadorEnvioSuelto
+  // si un envío EN_CUSTODIA ya está en mi custodia (mostrar Entregar/
+  // Intento/Incidencia) o en la de otro (mostrar Recibir).
+  usuarioId: string;
 }) {
   const [despachoId, setDespachoId] = React.useState(despachos[0]?.id ?? "");
   const [localidadId, setLocalidadId] = React.useState("");
@@ -289,7 +296,7 @@ export function ChoferView({
         <PlanillaDetalle planilla={planillaActiva} onRefrescar={refrescarActiva} permisos={permisos} />
       )}
 
-      <BuscadorEnvioSuelto permisos={permisos} />
+      <BuscadorEnvioSuelto permisos={permisos} usuarioId={usuarioId} />
     </div>
   );
 }
@@ -341,11 +348,35 @@ function BuscadorPlanillaPorCodigo({
   );
 }
 
-function BuscadorEnvioSuelto({ permisos }: { permisos: string[] }) {
+// Los 3 estados en los que puede estar un envío suelto que este buscador
+// necesita distinguir (ver sección 31 del plan): REGISTRADO/EN_CUSTODIA-de-
+// otro (se puede "Recibir"), EN_CUSTODIA-mío (Entregar/Intento/Incidencia,
+// igual que un envío de planilla), o un estado terminal (ENTREGADO/
+// CONFIRMADO/ANULADO, sin ninguna acción posible acá).
+function BuscadorEnvioSuelto({
+  permisos,
+  usuarioId,
+}: {
+  permisos: string[];
+  // 2026-09-17 (sección 31 del plan): para saber si `custodiaActualUsuarioId`
+  // del envío encontrado soy yo (Entregar/Intento/Incidencia) u otro
+  // usuario/nadie (Recibir).
+  usuarioId: string;
+}) {
   const [query, setQuery] = React.useState("");
   const [buscando, setBuscando] = React.useState(false);
-  const [envio, setEnvio] = React.useState<EnvioDePlanillaApi | null>(null);
+  // Se guarda el envío completo (no el recorte EnvioDePlanillaApi de antes)
+  // porque acá hace falta estadoActual/custodiaActualUsuarioId para decidir
+  // qué mostrar — envioApiComoFilaDePlanilla() se sigue usando recién al
+  // pasarlo a EnvioDePlanillaRow, que no necesita esos campos.
+  const [envio, setEnvio] = React.useState<(EnvioApi & { etiquetas: string[] }) | null>(null);
   const [noEncontrado, setNoEncontrado] = React.useState(false);
+  const [recibiendo, setRecibiendo] = React.useState(false);
+  // Mismo permiso que Cargar/Recibir planilla — el backend no distingue
+  // "recibir una planilla" de "recibir un envío suelto", los dos van por
+  // POST /custodia/recepcion y piden custodia:registrar (confirmado por el
+  // equipo de backend, sección 31).
+  const puedeRecibir = permisos.includes("custodia:registrar");
 
   async function buscar() {
     const texto = query.trim();
@@ -356,7 +387,7 @@ function BuscadorEnvioSuelto({ permisos }: { permisos: string[] }) {
     try {
       const r = await buscarSeguimientoAction(texto);
       if (r.ok) {
-        setEnvio(envioApiComoFilaDePlanilla(r.data.envio));
+        setEnvio(r.data.envio);
       } else if (r.notFound) {
         setNoEncontrado(true);
       } else {
@@ -367,14 +398,35 @@ function BuscadorEnvioSuelto({ permisos }: { permisos: string[] }) {
     }
   }
 
+  async function recibir() {
+    if (!envio) return;
+    setRecibiendo(true);
+    try {
+      const r = await recibirEnvioSueltoAction(envio.numero);
+      if (r.ok) {
+        toast.success(r.data.evento.duplicado ? "Ya estaba en tu custodia" : "Envío recibido");
+        await buscar();
+      } else {
+        toast.error(r.title, { description: r.message });
+      }
+    } finally {
+      setRecibiendo(false);
+    }
+  }
+
+  const estado = envio?.estadoActual;
+  const enMiCustodia = estado === "EN_CUSTODIA" && envio?.custodiaActualUsuarioId === usuarioId;
+  const puedeSerRecibido = estado === "REGISTRADO" || (estado === "EN_CUSTODIA" && !enMiCustodia);
+  const estadoFinal = estado === "ENTREGADO" || estado === "CONFIRMADO" || estado === "ANULADO";
+
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 pt-6">
         <div>
           <h3 className="font-semibold">Buscar envío suelto</h3>
           <p className="text-sm text-muted-foreground">
-            Para entregar, marcar intento fallido o incidencia de un envío que ya no aparece en
-            ninguna planilla (por número, remito o guía).
+            Para recibir, entregar, marcar intento fallido o incidencia de un envío que ya no
+            aparece en ninguna planilla (por número, remito o guía).
           </p>
         </div>
         <div className="flex gap-2">
@@ -390,8 +442,47 @@ function BuscadorEnvioSuelto({ permisos }: { permisos: string[] }) {
           </Button>
         </div>
         {noEncontrado && <p className="text-sm text-muted-foreground">No se encontró ningún envío.</p>}
-        {envio && (
-          <EnvioDePlanillaRow envio={envio} onRefrescar={async () => buscar()} permisos={permisos} />
+
+        {envio && puedeSerRecibido && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
+            <div>
+              <p className="font-mono text-sm font-semibold">#{guiaCorta(envio.numero)}</p>
+              <p className="text-sm">{envio.destinatarioNombre}</p>
+              <p className="text-xs text-muted-foreground">
+                {estado === "EN_CUSTODIA"
+                  ? "En custodia de otro usuario — \"Recibir acá\" te lo transfiere a este punto."
+                  : "Registrado, todavía sin custodia — \"Recibir acá\" lo toma para este punto."}
+              </p>
+            </div>
+            {puedeRecibir && (
+              <Button size="sm" className="gap-1.5" disabled={recibiendo} onClick={recibir}>
+                {recibiendo ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <PackageCheck className="size-4" />
+                )}
+                Recibir acá
+              </Button>
+            )}
+          </div>
+        )}
+
+        {envio && enMiCustodia && (
+          <EnvioDePlanillaRow
+            envio={envioApiComoFilaDePlanilla(envio)}
+            onRefrescar={async () => buscar()}
+            permisos={permisos}
+          />
+        )}
+
+        {envio && estadoFinal && (
+          <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+            <div>
+              <p className="font-mono text-sm font-semibold">#{guiaCorta(envio.numero)}</p>
+              <p className="text-sm">{envio.destinatarioNombre}</p>
+            </div>
+            <Badge variant="outline">{estado}</Badge>
+          </div>
         )}
       </CardContent>
     </Card>

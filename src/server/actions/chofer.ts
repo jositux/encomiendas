@@ -1,10 +1,10 @@
 "use server";
 
 import * as custodiaService from "../services/custodia";
-import { comoAccionResultado } from "./shared";
-import type { AccionResultado } from "./shared";
+import { comoAccionResultado, comoResultado } from "./shared";
+import type { AccionResultado, ResultadoConDato } from "./shared";
 import { ApiError } from "../api-client";
-import type { DespachoApi, PlanillaApi } from "../services/custodia";
+import type { DespachoApi, PlanillaApi, RespuestaCustodia } from "../services/custodia";
 
 // -- Chofer (Despacho -> Planilla -> Custodia/Entrega) -----------------------
 // Real (src/server/services/custodia.ts). Ver esa sección de
@@ -45,6 +45,17 @@ export async function cargarPlanillaAction(planillaId: string): Promise<AccionRe
 
 export async function recibirPlanillaAction(planillaId: string): Promise<AccionResultado> {
   return comoAccionResultado(() => custodiaService.recibirPlanilla(planillaId));
+}
+
+// 2026-09-17 (sección 31 del plan): recepción de un envío SUELTO, sin
+// pasar por una planilla — mismo permiso que recibirPlanillaAction
+// (`custodia:registrar`), pero devuelve el dato (comoResultado, no
+// comoAccionResultado) porque la UI lo necesita para saber en qué quedó
+// el envío sin tener que rebuscarlo.
+export async function recibirEnvioSueltoAction(
+  envioNumero: string
+): Promise<ResultadoConDato<RespuestaCustodia>> {
+  return comoResultado(() => custodiaService.recibirEnvioSuelto(envioNumero));
 }
 
 export async function entregarEnvioAction(

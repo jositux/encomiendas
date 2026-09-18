@@ -45,6 +45,10 @@ export default async function ChoferPage() {
       // pasa para gatear en la UI Cargar/Recibir (custodia:registrar) y
       // Entregar/Intento/Incidencia (entregas:registrar).
       permisos={session?.permisos ?? []}
+      // 2026-09-17 (sección 31 del plan): para decidir en BuscadorEnvioSuelto
+      // si un envío EN_CUSTODIA ya está en mi custodia (mostrar Entregar/
+      // Intento/Incidencia) o en la de otro (mostrar Recibir).
+      usuarioId={session?.usuarioId ?? ""}
     />
   );
 }

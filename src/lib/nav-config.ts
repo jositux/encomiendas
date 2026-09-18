@@ -15,6 +15,7 @@ import {
   CreditCard,
   Search,
   ClipboardList,
+  Scissors,
 } from "lucide-react";
 
 export interface NavItem {
@@ -93,6 +94,19 @@ export const NAV_GROUPS: NavGroup[] = [
         // de entrada real de la pantalla es la búsqueda de planilla por
         // código, que solo pide planillas:leer.
         permiso: "planillas:leer",
+      },
+      {
+        title: "Despachos",
+        href: "/despachos",
+        icon: Scissors,
+        description: "Cortar la carga pendiente de la base en planillas por recorrido",
+        // 2026-09-18 (sección 32 del plan): sin `permiso` todavía — a
+        // diferencia de "Chofer", el string exacto que protege POST
+        // /despachos (o la lectura de /recorridos que esta pantalla
+        // necesita) no está confirmado con un 403 real. Se deja visible
+        // para cualquier usuario logueado, como la mayoría de los ítems de
+        // este menú, hasta que se confirme en vivo con una cuenta que
+        // debería tenerlo (operador) y una que no (chofer).
       },
     ],
   },
