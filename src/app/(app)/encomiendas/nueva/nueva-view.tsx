@@ -274,6 +274,17 @@ export function NuevaEncomiendaView({
     }
     return clientUuidRef.current;
   }, []);
+  // Correccion de agent-back en el hilo de NOTA-2026-09-21-01 (6 min despues
+  // de la spec original) + [CONTRATO] CONTRATO-2026-09-21-01: remitoManual
+  // es SOLO digitos (1 a 6), no texto libre como decia la spec original.
+  // REQ-RM-06 revisado + REQ-RM-15: hay que rellenar con ceros a la
+  // izquierda hasta 6 digitos ANTES de mandarlo — si no, "123" y "000123"
+  // quedan como dos filas distintas para el UNIQUE del backend y dos
+  // operadores podrian cargar el mismo papel sin chocar.
+  function remitoNormalizado(): string | undefined {
+    const digitos = remitoManual.trim();
+    return digitos ? digitos.padStart(6, "0") : undefined;
+  }
   const [valorDeclarado, setValorDeclarado] = React.useState<number | "">("");
   const [gasto, setGasto] = React.useState<number | "">("");
   const [observaciones, setObservaciones] = React.useState("");
@@ -374,7 +385,7 @@ export function NuevaEncomiendaView({
         lugarPago,
         formaPago,
         contrarreembolsoImporte: tipo === "efectivo" ? Number(montoCrr) : undefined,
-        remitoManualNumero: remitoManual.trim() || undefined,
+        remitoManualNumero: remitoNormalizado(),
         valorDeclarado: valorDeclarado === "" ? undefined : Number(valorDeclarado),
         gasto: gasto === "" ? undefined : Number(gasto),
         observaciones: observaciones.trim() || undefined,
@@ -595,10 +606,15 @@ export function NuevaEncomiendaView({
                   <Input
                     id="remito-manual"
                     ref={remitoInputRef}
-                    placeholder="R-0001 (opcional)"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    placeholder="123456 (opcional)"
                     value={remitoManual}
                     onChange={(e) => {
-                      setRemitoManual(e.target.value);
+                      // REQ-RM-03/REQ-RM-14 (corregidos): solo digitos, hasta
+                      // 6 — mejor volver el error imposible que detectarlo.
+                      setRemitoManual(e.target.value.replace(/\D/g, "").slice(0, 6));
                       if (errors.remitoManual) {
                         setErrors((prev) => ({ ...prev, remitoManual: "" }));
                       }
@@ -609,9 +625,9 @@ export function NuevaEncomiendaView({
                       sistema no se puede previsualizar, lo asigna la base
                       recien dentro de la transaccion del alta. */}
                   <p className="text-xs text-muted-foreground">
-                    {remitoManual.trim()
-                      ? "Se guarda junto con el número automático del sistema."
-                      : "Automático al guardar si lo dejás vacío."}
+                    {remitoManual
+                      ? "Se completa con ceros a la izquierda hasta 6 dígitos al guardar."
+                      : "Automático al guardar si lo dejás vacío. Solo números, hasta 6 dígitos."}
                   </p>
                   {errors.remitoManual && (
                     <p className="text-xs text-destructive">{errors.remitoManual}</p>
