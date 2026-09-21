@@ -116,10 +116,13 @@ function emptyDestino(localidades: LocalidadBackend[], sectores: SectorApi[]): D
 }
 
 function guiaDeEnvio(e: EnvioApi): string {
-  // La guía real (letra+numero, ej. "C1") que usa el negocio en mostrador
-  // viene en guiaDiaria. `numero` es un correlativo interno ("000000001-7"),
-  // no lo que se dice/escribe como guía. Confirmado probando en vivo.
-  return e.guiaDiaria ?? e.numero ?? e.id?.slice(0, 8) ?? "—";
+  // Protocolo cc-relay, NOTA-2026-09-21-01, REQ-RM-07: si el envío tiene
+  // remito manual (el número de talonario que anotó el operador), ESE es
+  // el identificador principal — antes que la guía real (letra+numero, ej.
+  // "C1", que asigna el negocio en mostrador y vive en guiaDiaria) y que el
+  // correlativo interno del sistema (`numero`, "000000001-7", no es lo que
+  // se dice/escribe como guía. Confirmado probando en vivo).
+  return e.remitoManualNumero ?? e.guiaDiaria ?? e.numero ?? e.id?.slice(0, 8) ?? "—";
 }
 
 // ---- Carga rápida: un remitente fijo, varios destinos, cada uno se guarda
@@ -255,6 +258,22 @@ export function NuevaEncomiendaView({
   const [flete, setFlete] = React.useState<number | "">("");
   const [montoCrr, setMontoCrr] = React.useState<number | "">("");
   const [remitoManual, setRemitoManual] = React.useState("");
+  // Protocolo cc-relay, NOTA-2026-09-21-01 (REQ-RM-10/11): ref al input para
+  // poner el foco ahi cuando el backend rechaza por REMITO_EN_USO, y uuid de
+  // reintento que se mantiene fijo entre envios rechazados (se limpia recien
+  // en resetForm, es decir tras un alta con exito) para que un reintento
+  // corrigiendo el remito sea idempotente de punta a punta.
+  const remitoInputRef = React.useRef<HTMLInputElement>(null);
+  const clientUuidRef = React.useRef<string | null>(null);
+  const clientUuid = React.useCallback(() => {
+    if (!clientUuidRef.current) {
+      clientUuidRef.current =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `cid-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+    }
+    return clientUuidRef.current;
+  }, []);
   const [valorDeclarado, setValorDeclarado] = React.useState<number | "">("");
   const [gasto, setGasto] = React.useState<number | "">("");
   const [observaciones, setObservaciones] = React.useState("");
@@ -310,6 +329,7 @@ export function NuevaEncomiendaView({
     setFlete("");
     setMontoCrr("");
     setRemitoManual("");
+    clientUuidRef.current = null;
     setValorDeclarado("");
     setGasto("");
     setObservaciones("");
@@ -359,11 +379,19 @@ export function NuevaEncomiendaView({
         gasto: gasto === "" ? undefined : Number(gasto),
         observaciones: observaciones.trim() || undefined,
       };
-      const resultado = await crearEnvioAction(data);
+      const resultado = await crearEnvioAction(data, clientUuid());
       if (!resultado.ok) {
         // Rechazo de negocio del backend (ej. "no hay servicio_par" para ese
         // origen/destino) — no es una excepción real, se muestra el título
         // real que ya manda el backend en vez de dejar el formulario roto.
+        // REMITO_EN_USO (protocolo cc-relay, NOTA-2026-09-21-01, REQ-RM-10)
+        // se marca en el campo puntual y se le pone el foco ahí; cualquier
+        // otro rechazo (incl. YA_EXISTE, REQ-RM-12) sigue yendo solo al
+        // toast, sin tocar remitoManual.
+        if (resultado.code === "REMITO_EN_USO") {
+          setErrors((prev) => ({ ...prev, remitoManual: resultado.title }));
+          remitoInputRef.current?.focus();
+        }
         toast.error(resultado.title || resultado.message);
         return;
       }
@@ -560,6 +588,36 @@ export function NuevaEncomiendaView({
           <form onSubmit={handleSubmit}>
             <Card>
               <CardContent className="flex flex-col gap-6">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="remito-manual" className="text-xs text-muted-foreground">
+                    Remito N°
+                  </Label>
+                  <Input
+                    id="remito-manual"
+                    ref={remitoInputRef}
+                    placeholder="R-0001 (opcional)"
+                    value={remitoManual}
+                    onChange={(e) => {
+                      setRemitoManual(e.target.value);
+                      if (errors.remitoManual) {
+                        setErrors((prev) => ({ ...prev, remitoManual: "" }));
+                      }
+                    }}
+                    aria-invalid={!!errors.remitoManual}
+                  />
+                  {/* REQ-RM-04: ayuda mientras esta vacio — el numero del
+                      sistema no se puede previsualizar, lo asigna la base
+                      recien dentro de la transaccion del alta. */}
+                  <p className="text-xs text-muted-foreground">
+                    {remitoManual.trim()
+                      ? "Se guarda junto con el número automático del sistema."
+                      : "Automático al guardar si lo dejás vacío."}
+                  </p>
+                  {errors.remitoManual && (
+                    <p className="text-xs text-destructive">{errors.remitoManual}</p>
+                  )}
+                </div>
+
                 <div>
                   <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <PackagePlus className="size-4" />
@@ -877,7 +935,7 @@ export function NuevaEncomiendaView({
                   )}
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <div className="grid gap-1.5">
                     <Label className="text-xs text-muted-foreground">Dónde se paga el flete</Label>
                     <Select value={lugarPago} onValueChange={(v) => setLugarPago(v as LugarPagoApi)}>
@@ -907,17 +965,6 @@ export function NuevaEncomiendaView({
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="remito-manual" className="text-xs text-muted-foreground">
-                      Remito manual (opcional)
-                    </Label>
-                    <Input
-                      id="remito-manual"
-                      placeholder="Solo si ya tenés un número impreso"
-                      value={remitoManual}
-                      onChange={(e) => setRemitoManual(e.target.value)}
-                    />
                   </div>
                 </div>
 
@@ -1756,6 +1803,11 @@ export function NuevaEncomiendaView({
                       </span>
                     )}
                   </div>
+                  {e.remitoManualNumero && (
+                    <p className="text-[11px] text-muted-foreground">
+                      N° de sistema: <span className="font-mono">{e.numero}</span>
+                    </p>
+                  )}
                   <p className="mt-1.5 truncate text-xs text-muted-foreground">
                     {e.remitenteNombre ?? "—"} → {e.destinatarioNombre ?? "—"}
                   </p>

@@ -204,12 +204,16 @@ export interface EnvioApi {
   [key: string]: unknown;
 }
 
-export async function crearEnvio(data: CrearEnvioInput): Promise<EnvioApi> {
+export async function crearEnvio(data: CrearEnvioInput, clientUuid?: string): Promise<EnvioApi> {
   const token = await requireToken();
   return apiFetch<EnvioApi>("/envios", {
     method: "POST",
     token,
-    body: { ...data, clientUuid: nuevoClientUuid() },
+    // Protocolo cc-relay, NOTA-2026-09-21-01, REQ-RM-11: si el caller ya
+    // tiene un clientUuid de un intento anterior (rechazado, no consumido
+    // por el backend), lo reusa en vez de generar uno nuevo — asi un
+    // reintento tras corregir REMITO_EN_USO es idempotente de punta a punta.
+    body: { ...data, clientUuid: clientUuid ?? nuevoClientUuid() },
   });
 }
 
