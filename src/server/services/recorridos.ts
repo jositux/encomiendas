@@ -3,8 +3,6 @@ import "server-only";
 import { apiFetch, apiFetchColeccion } from "../api-client";
 import { requireToken } from "./shared";
 import { listPuntos } from "./puntos";
-import { listUsuariosSeguro } from "./usuarios";
-import { listVehiculos } from "./vehiculos";
 import { listSectores } from "./sectores";
 import type { RecorridoBackend } from "@/types";
 
@@ -22,6 +20,15 @@ interface RecorridoApi {
   baseId: string;
   choferPredeterminadoId: string | null;
   vehiculoPredeterminadoId: string | null;
+  // CONTRATO-2026-09-22-01 (backend): el propio /recorridos ahora resuelve
+  // el nombre legible del chofer/vehiculo predeterminados, no solo el id.
+  // Reemplaza la resolucion que haciamos nosotros via listUsuariosSeguro()/
+  // listVehiculos() (ver toRecorrido() mas abajo) — esa resolucion casera
+  // era la causa real de que "Chofer predeterminado" quedara en "—" para
+  // el rol operador (403 en GET /usuarios, sin usuarios:leer), aunque el
+  // recorrido SI tuviera chofer asignado.
+  choferPredeterminadoNombre: string | null;
+  vehiculoPredeterminadoNombre: string | null;
   horaCorte: string | null;
   activo: boolean;
   paradas: ParadaApi[];
@@ -40,12 +47,7 @@ interface RecorridoApi {
 // devuelve embebida en el propio recorrido, como item.paradas[]. Por eso
 // derivamos localidadIds directamente de item.paradas y no de un cruce con
 // /sectores (bug real, encontrado probando en vivo).
-function toRecorrido(
-  item: RecorridoApi,
-  puntosById: Map<string, string>,
-  usuariosById: Map<string, string>,
-  vehiculosById: Map<string, string>
-): RecorridoBackend {
+function toRecorrido(item: RecorridoApi, puntosById: Map<string, string>): RecorridoBackend {
   const localidadIds = [...new Set((item.paradas ?? []).map((p) => p.localidadId))];
   return {
     id: item.id,
@@ -53,13 +55,11 @@ function toRecorrido(
     baseId: item.baseId,
     baseNombre: puntosById.get(item.baseId) ?? "—",
     choferPredeterminadoId: item.choferPredeterminadoId,
-    choferNombre: item.choferPredeterminadoId
-      ? (usuariosById.get(item.choferPredeterminadoId) ?? "—")
-      : null,
+    // CONTRATO-2026-09-22-01: nombre ya resuelto por el backend, viene null
+    // si no hay chofer/vehiculo asignado (mismo criterio que antes).
+    choferNombre: item.choferPredeterminadoNombre,
     vehiculoPredeterminadoId: item.vehiculoPredeterminadoId,
-    vehiculoNombre: item.vehiculoPredeterminadoId
-      ? (vehiculosById.get(item.vehiculoPredeterminadoId) ?? "—")
-      : null,
+    vehiculoNombre: item.vehiculoPredeterminadoNombre,
     horaCorte: item.horaCorte,
     activo: item.activo,
     localidadIds,
@@ -68,31 +68,29 @@ function toRecorrido(
 
 // 2026-09-15: usaba listUsuarios() sin manejo de error — un 403 en
 // GET /usuarios (rol sin permiso de listarlos) tiraba abajo listRecorridos()
-// completo, y con él la pantalla de Rutas. `usuariosById` acá solo resuelve
-// un id a nombre para mostrar, con fallback ya presente en toRecorrido(),
-// así que se cambió a listUsuariosSeguro() (ver sección 18.2 del plan de
-// integración, mismo bug que en Seguimiento/Custodia).
+// completo, y con él la pantalla de Rutas. Se cambió a listUsuariosSeguro()
+// (sección 18.2 del plan de integración), pero eso solo evitaba el crash:
+// para el rol operador (sin usuarios:leer) la lista volvía vacía igual, y
+// "Chofer predeterminado" quedaba en "—" aunque el recorrido SI tuviera
+// chofer asignado. CONTRATO-2026-09-22-01 (backend, confirmado en vivo
+// 2026-09-22) resuelve esto de raíz: /recorridos ya manda el nombre
+// resuelto, así que no hace falta pegarle a /usuarios ni a /vehiculos acá
+// — `lookups()` solo resuelve la base.
 async function lookups() {
-  const [puntos, usuarios, vehiculos] = await Promise.all([
-    listPuntos(),
-    listUsuariosSeguro(),
-    listVehiculos(),
-  ]);
+  const puntos = await listPuntos();
   return {
     puntosById: new Map(puntos.map((p) => [p.id, p.nombre])),
-    usuariosById: new Map(usuarios.map((u) => [u.id, u.nombre])),
-    vehiculosById: new Map(vehiculos.map((v) => [v.id, v.nombre])),
   };
 }
 
 export async function listRecorridos(): Promise<RecorridoBackend[]> {
   const token = await requireToken();
-  const [pagina, { puntosById, usuariosById, vehiculosById }] = await Promise.all([
+  const [pagina, { puntosById }] = await Promise.all([
     // Catalogo: sin limite=200 explicito, el backend trunca a 50 (default).
     apiFetchColeccion<RecorridoApi>("/recorridos?limite=200", { token }),
     lookups(),
   ]);
-  return pagina.datos.map((item) => toRecorrido(item, puntosById, usuariosById, vehiculosById));
+  return pagina.datos.map((item) => toRecorrido(item, puntosById));
 }
 
 export async function createRecorrido(data: {
@@ -100,11 +98,11 @@ export async function createRecorrido(data: {
   baseId: string;
 }): Promise<RecorridoBackend> {
   const token = await requireToken();
-  const [item, { puntosById, usuariosById, vehiculosById }] = await Promise.all([
+  const [item, { puntosById }] = await Promise.all([
     apiFetch<RecorridoApi>("/recorridos", { method: "POST", token, body: data }),
     lookups(),
   ]);
-  return toRecorrido(item, puntosById, usuariosById, vehiculosById);
+  return toRecorrido(item, puntosById);
 }
 
 export async function updateRecorrido(
@@ -119,11 +117,11 @@ export async function updateRecorrido(
   }
 ): Promise<RecorridoBackend> {
   const token = await requireToken();
-  const [item, { puntosById, usuariosById, vehiculosById }] = await Promise.all([
+  const [item, { puntosById }] = await Promise.all([
     apiFetch<RecorridoApi>(`/recorridos/${id}`, { method: "PATCH", token, body: patch }),
     lookups(),
   ]);
-  return toRecorrido(item, puntosById, usuariosById, vehiculosById);
+  return toRecorrido(item, puntosById);
 }
 
 export async function removeRecorrido(id: string): Promise<void> {
