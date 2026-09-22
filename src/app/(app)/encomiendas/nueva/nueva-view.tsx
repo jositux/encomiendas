@@ -1130,24 +1130,39 @@ export function NuevaEncomiendaView({
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="grid gap-1.5">
                       <Label className="text-xs text-muted-foreground">Origen</Label>
-                      <ClienteSearchInput
-                        value={origen.nombre}
-                        onChange={(v) => setOrigen({ ...origen, nombre: v, clienteId: undefined })}
-                        onSelectCliente={(c) => {
-                          setOrigen({
-                            nombre: c.nombre,
-                            telefono: c.telefono,
-                            clienteId: c.id,
-                            calle: c.calle ?? "",
-                            numero: c.numero ?? "",
-                            piso: c.piso ?? "",
-                            referencia: c.referencia ?? "",
-                            localidadId: c.localidadId ?? origen.localidadId,
-                          });
-                          setRemitenteConfirmado(true);
-                        }}
-                        placeholder="Nombre — buscá por nombre o cargá uno nuevo"
-                      />
+                      <div className="flex gap-2">
+                        <div className="min-w-0 flex-1">
+                          <ClienteSearchInput
+                            value={origen.nombre}
+                            onChange={(v) => setOrigen({ ...origen, nombre: v, clienteId: undefined })}
+                            onSelectCliente={(c) => {
+                              setOrigen({
+                                nombre: c.nombre,
+                                telefono: c.telefono,
+                                clienteId: c.id,
+                                calle: c.calle ?? "",
+                                numero: c.numero ?? "",
+                                piso: c.piso ?? "",
+                                referencia: c.referencia ?? "",
+                                localidadId: c.localidadId ?? origen.localidadId,
+                              });
+                              setRemitenteConfirmado(true);
+                            }}
+                            placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="shrink-0"
+                          title="Alta rápida de cliente"
+                          aria-label="Alta rápida de cliente para el remitente de la carga"
+                          onClick={() => setAltaRapidaBloque("origen")}
+                        >
+                          <UserPlus2 className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                     <div className="grid gap-1.5">
                       <Label className="text-xs text-muted-foreground">Teléfono</Label>
