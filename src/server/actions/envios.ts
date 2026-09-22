@@ -22,8 +22,12 @@ import type { CrearEnvioInput, ActualizarEnvioInput } from "../services/envios";
 // ese destino") tanto en local como en producción. Un error real e
 // inesperado (ej. el backend caído) sigue relanzándose tal cual.
 export async function crearEnvioAction(
-  data: CrearEnvioInput
-): Promise<{ ok: true; envio: Awaited<ReturnType<typeof enviosService.crearEnvio>> } | { ok: false; title: string; message: string }> {
+  data: CrearEnvioInput,
+  clientUuid?: string
+): Promise<
+  | { ok: true; envio: Awaited<ReturnType<typeof enviosService.crearEnvio>> }
+  | { ok: false; code: string; title: string; message: string }
+> {
   // Si el remitente no vino de ClienteQuickPick (sin clienteId), tratamos de
   // asociarlo a un Cliente real (o crear uno nuevo) para que la base de
   // clientes se complete sola. Mejor esfuerzo: si falla, seguimos con el
@@ -39,12 +43,16 @@ export async function crearEnvioAction(
   }
 
   try {
-    const item = await enviosService.crearEnvio({ ...data, remitente });
+    const item = await enviosService.crearEnvio({ ...data, remitente }, clientUuid);
     revalidateAll();
     return { ok: true, envio: item };
   } catch (err) {
     if (err instanceof ApiError) {
-      return { ok: false, title: err.title, message: err.message };
+      // code va aparte de title/message desde el protocolo cc-relay,
+      // NOTA-2026-09-21-01 (REQ-RM-10/12): el front lo usa para distinguir
+      // REMITO_EN_USO (error puntual del campo remito) de cualquier otro
+      // rechazo (ej. YA_EXISTE), que sigue yendo solo al toast generico.
+      return { ok: false, code: err.code, title: err.title, message: err.message };
     }
     throw err;
   }

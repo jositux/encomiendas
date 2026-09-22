@@ -114,6 +114,11 @@ export async function listClientes(): Promise<ClienteApi[]> {
   return pagina.datos;
 }
 
+// sectorId es opcional (NOTA-2026-09-22-01, confirmado por el backend
+// 2026-09-22): sin él, el backend resuelve el sector predeterminado de la
+// localidad en vez de que el caller tenga que elegir uno a mano — lo usa
+// el alta rápida de cliente desde Nueva Encomienda, que no pide sector.
+// ClienteFormDialog (alta/edición completa) lo sigue mandando siempre.
 export async function createCliente(data: {
   tipo: "persona" | "empresa";
   nombre: string;
@@ -122,7 +127,7 @@ export async function createCliente(data: {
   email?: string;
   esCuentaCorriente?: boolean;
   localidadId: string;
-  sectorId: string;
+  sectorId?: string;
   calle: string;
   numero?: string;
   piso?: string;

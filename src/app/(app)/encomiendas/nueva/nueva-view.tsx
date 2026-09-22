@@ -6,6 +6,7 @@ import {
   PackagePlus,
   Truck,
   Plus,
+  UserPlus2,
   Copy,
   CheckCircle2,
   AlertTriangle,
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { ClienteSearchInput } from "@/components/shared/cliente-search-input";
+import { ClienteAltaRapidaDialog } from "@/components/clientes/cliente-alta-rapida-dialog";
 import {
   bultosSchema,
   montoNoNegativoSchema,
@@ -50,6 +52,7 @@ import type {
   TipoEnvioApi,
 } from "@/server/services/envios";
 import type { SectorApi } from "@/server/services/sectores";
+import type { ClienteApi } from "@/server/services/clientes";
 import type { LocalidadBackend, SesionUsuario } from "@/types";
 
 const TIPOS: { value: TipoEnvioApi; label: string }[] = [
@@ -116,10 +119,13 @@ function emptyDestino(localidades: LocalidadBackend[], sectores: SectorApi[]): D
 }
 
 function guiaDeEnvio(e: EnvioApi): string {
-  // La guía real (letra+numero, ej. "C1") que usa el negocio en mostrador
-  // viene en guiaDiaria. `numero` es un correlativo interno ("000000001-7"),
-  // no lo que se dice/escribe como guía. Confirmado probando en vivo.
-  return e.guiaDiaria ?? e.numero ?? e.id?.slice(0, 8) ?? "—";
+  // Protocolo cc-relay, NOTA-2026-09-21-01, REQ-RM-07: si el envío tiene
+  // remito manual (el número de talonario que anotó el operador), ESE es
+  // el identificador principal — antes que la guía real (letra+numero, ej.
+  // "C1", que asigna el negocio en mostrador y vive en guiaDiaria) y que el
+  // correlativo interno del sistema (`numero`, "000000001-7", no es lo que
+  // se dice/escribe como guía. Confirmado probando en vivo).
+  return e.remitoManualNumero ?? e.guiaDiaria ?? e.numero ?? e.id?.slice(0, 8) ?? "—";
 }
 
 // ---- Carga rápida: un remitente fijo, varios destinos, cada uno se guarda
@@ -245,9 +251,48 @@ export function NuevaEncomiendaView({
   const [modo, setModo] = React.useState<"individual" | "rapida">("individual");
 
   const [origen, setOrigen] = React.useState<OrigenState>(emptyOrigen());
+  // NOTA-2026-09-22-01: alta rápida de cliente — qué bloque abrió el modal
+  // (o null si está cerrado). Un solo modal compartido entre origen y
+  // destino, precargado según cuál esté activo.
+  const [altaRapidaBloque, setAltaRapidaBloque] = React.useState<"origen" | "destino" | null>(
+    null
+  );
   const [destino, setDestino] = React.useState<DestinoState>(() =>
     emptyDestino(localidades, sectores)
   );
+
+  // NOTA-2026-09-22-01: el cliente creado o elegido en el modal de alta
+  // rápida se asocia al bloque que lo abrió — mismo shape que
+  // onSelectCliente de ClienteSearchInput en cada bloque (abajo), así que
+  // el resultado se ve igual sin importar si vino de tipear+buscar o del
+  // atajo del botón "+".
+  function handleClienteAltaRapida(cliente: ClienteApi) {
+    if (altaRapidaBloque === "origen") {
+      setOrigen({
+        nombre: cliente.nombre,
+        telefono: cliente.telefono,
+        clienteId: cliente.id,
+        calle: cliente.calle ?? "",
+        numero: cliente.numero ?? "",
+        piso: cliente.piso ?? "",
+        referencia: cliente.referencia ?? "",
+        localidadId: cliente.localidadId ?? origen.localidadId,
+      });
+    } else if (altaRapidaBloque === "destino") {
+      setDestino({
+        nombre: cliente.nombre,
+        telefono: cliente.telefono,
+        calle: cliente.calle ?? "",
+        numero: cliente.numero ?? "",
+        piso: cliente.piso ?? "",
+        referencia: cliente.referencia ?? "",
+        localidadId: cliente.localidadId ?? destino.localidadId,
+        sectorId: cliente.sectorId ?? destino.sectorId,
+        clienteId: cliente.id,
+      });
+    }
+  }
+
   const [tipo, setTipo] = React.useState<TipoEnvioApi>("paqueteria");
   const [lugarPago, setLugarPago] = React.useState<LugarPagoApi>("destino");
   const [formaPago, setFormaPago] = React.useState<FormaPagoApi>("contado");
@@ -255,6 +300,33 @@ export function NuevaEncomiendaView({
   const [flete, setFlete] = React.useState<number | "">("");
   const [montoCrr, setMontoCrr] = React.useState<number | "">("");
   const [remitoManual, setRemitoManual] = React.useState("");
+  // Protocolo cc-relay, NOTA-2026-09-21-01 (REQ-RM-10/11): ref al input para
+  // poner el foco ahi cuando el backend rechaza por REMITO_EN_USO, y uuid de
+  // reintento que se mantiene fijo entre envios rechazados (se limpia recien
+  // en resetForm, es decir tras un alta con exito) para que un reintento
+  // corrigiendo el remito sea idempotente de punta a punta.
+  const remitoInputRef = React.useRef<HTMLInputElement>(null);
+  const clientUuidRef = React.useRef<string | null>(null);
+  const clientUuid = React.useCallback(() => {
+    if (!clientUuidRef.current) {
+      clientUuidRef.current =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `cid-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+    }
+    return clientUuidRef.current;
+  }, []);
+  // Correccion de agent-back en el hilo de NOTA-2026-09-21-01 (6 min despues
+  // de la spec original) + [CONTRATO] CONTRATO-2026-09-21-01: remitoManual
+  // es SOLO digitos (1 a 6), no texto libre como decia la spec original.
+  // REQ-RM-06 revisado + REQ-RM-15: hay que rellenar con ceros a la
+  // izquierda hasta 6 digitos ANTES de mandarlo — si no, "123" y "000123"
+  // quedan como dos filas distintas para el UNIQUE del backend y dos
+  // operadores podrian cargar el mismo papel sin chocar.
+  function remitoNormalizado(): string | undefined {
+    const digitos = remitoManual.trim();
+    return digitos ? digitos.padStart(6, "0") : undefined;
+  }
   const [valorDeclarado, setValorDeclarado] = React.useState<number | "">("");
   const [gasto, setGasto] = React.useState<number | "">("");
   const [observaciones, setObservaciones] = React.useState("");
@@ -310,6 +382,7 @@ export function NuevaEncomiendaView({
     setFlete("");
     setMontoCrr("");
     setRemitoManual("");
+    clientUuidRef.current = null;
     setValorDeclarado("");
     setGasto("");
     setObservaciones("");
@@ -354,16 +427,24 @@ export function NuevaEncomiendaView({
         lugarPago,
         formaPago,
         contrarreembolsoImporte: tipo === "efectivo" ? Number(montoCrr) : undefined,
-        remitoManualNumero: remitoManual.trim() || undefined,
+        remitoManualNumero: remitoNormalizado(),
         valorDeclarado: valorDeclarado === "" ? undefined : Number(valorDeclarado),
         gasto: gasto === "" ? undefined : Number(gasto),
         observaciones: observaciones.trim() || undefined,
       };
-      const resultado = await crearEnvioAction(data);
+      const resultado = await crearEnvioAction(data, clientUuid());
       if (!resultado.ok) {
         // Rechazo de negocio del backend (ej. "no hay servicio_par" para ese
         // origen/destino) — no es una excepción real, se muestra el título
         // real que ya manda el backend en vez de dejar el formulario roto.
+        // REMITO_EN_USO (protocolo cc-relay, NOTA-2026-09-21-01, REQ-RM-10)
+        // se marca en el campo puntual y se le pone el foco ahí; cualquier
+        // otro rechazo (incl. YA_EXISTE, REQ-RM-12) sigue yendo solo al
+        // toast, sin tocar remitoManual.
+        if (resultado.code === "REMITO_EN_USO") {
+          setErrors((prev) => ({ ...prev, remitoManual: resultado.title }));
+          remitoInputRef.current?.focus();
+        }
         toast.error(resultado.title || resultado.message);
         return;
       }
@@ -560,6 +641,41 @@ export function NuevaEncomiendaView({
           <form onSubmit={handleSubmit}>
             <Card>
               <CardContent className="flex flex-col gap-6">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="remito-manual" className="text-xs text-muted-foreground">
+                    Remito N°
+                  </Label>
+                  <Input
+                    id="remito-manual"
+                    ref={remitoInputRef}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    placeholder="123456 (opcional)"
+                    value={remitoManual}
+                    onChange={(e) => {
+                      // REQ-RM-03/REQ-RM-14 (corregidos): solo digitos, hasta
+                      // 6 — mejor volver el error imposible que detectarlo.
+                      setRemitoManual(e.target.value.replace(/\D/g, "").slice(0, 6));
+                      if (errors.remitoManual) {
+                        setErrors((prev) => ({ ...prev, remitoManual: "" }));
+                      }
+                    }}
+                    aria-invalid={!!errors.remitoManual}
+                  />
+                  {/* REQ-RM-04: ayuda mientras esta vacio — el numero del
+                      sistema no se puede previsualizar, lo asigna la base
+                      recien dentro de la transaccion del alta. */}
+                  <p className="text-xs text-muted-foreground">
+                    {remitoManual
+                      ? "Se completa con ceros a la izquierda hasta 6 dígitos al guardar."
+                      : "Automático al guardar si lo dejás vacío. Solo números, hasta 6 dígitos."}
+                  </p>
+                  {errors.remitoManual && (
+                    <p className="text-xs text-destructive">{errors.remitoManual}</p>
+                  )}
+                </div>
+
                 <div>
                   <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <PackagePlus className="size-4" />
@@ -570,25 +686,42 @@ export function NuevaEncomiendaView({
                       <Label htmlFor="origen-nombre" className="text-xs text-muted-foreground">
                         Origen
                       </Label>
-                      <ClienteSearchInput
-                        id="origen-nombre"
-                        value={origen.nombre}
-                        onChange={(v) => setOrigen({ ...origen, nombre: v, clienteId: undefined })}
-                        onSelectCliente={(c) =>
-                          setOrigen({
-                            nombre: c.nombre,
-                            telefono: c.telefono,
-                            clienteId: c.id,
-                            calle: c.calle ?? "",
-                            numero: c.numero ?? "",
-                            piso: c.piso ?? "",
-                            referencia: c.referencia ?? "",
-                            localidadId: c.localidadId ?? origen.localidadId,
-                          })
-                        }
-                        placeholder="Nombre — buscá por nombre o cargá uno nuevo"
-                        ariaInvalid={!!errors.origenNombre}
-                      />
+                      <div className="flex gap-2">
+                        <div className="min-w-0 flex-1">
+                          <ClienteSearchInput
+                            id="origen-nombre"
+                            value={origen.nombre}
+                            onChange={(v) =>
+                              setOrigen({ ...origen, nombre: v, clienteId: undefined })
+                            }
+                            onSelectCliente={(c) =>
+                              setOrigen({
+                                nombre: c.nombre,
+                                telefono: c.telefono,
+                                clienteId: c.id,
+                                calle: c.calle ?? "",
+                                numero: c.numero ?? "",
+                                piso: c.piso ?? "",
+                                referencia: c.referencia ?? "",
+                                localidadId: c.localidadId ?? origen.localidadId,
+                              })
+                            }
+                            placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                            ariaInvalid={!!errors.origenNombre}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="shrink-0"
+                          title="Alta rápida de cliente"
+                          aria-label="Alta rápida de cliente para el origen"
+                          onClick={() => setAltaRapidaBloque("origen")}
+                        >
+                          <UserPlus2 className="size-4" />
+                        </Button>
+                      </div>
                       {errors.origenNombre && (
                         <p className="text-xs text-destructive">{errors.origenNombre}</p>
                       )}
@@ -687,33 +820,48 @@ export function NuevaEncomiendaView({
                       <Label htmlFor="destino-nombre" className="text-xs text-muted-foreground">
                         Destino
                       </Label>
-                      <ClienteSearchInput
-                        id="destino-nombre"
-                        value={destino.nombre}
-                        onChange={(v) =>
-                          setDestino({
-                            ...destino,
-                            nombre: v,
-                            clienteId: undefined,
-                            domicilioId: undefined,
-                          })
-                        }
-                        onSelectCliente={(c) => {
-                          setDestino({
-                            nombre: c.nombre,
-                            telefono: c.telefono,
-                            calle: c.calle ?? "",
-                            numero: c.numero ?? "",
-                            piso: c.piso ?? "",
-                            referencia: c.referencia ?? "",
-                            localidadId: c.localidadId ?? destino.localidadId,
-                            sectorId: c.sectorId ?? destino.sectorId,
-                            clienteId: c.id,
-                          });
-                        }}
-                        placeholder="Nombre — buscá por nombre o cargá uno nuevo"
-                        ariaInvalid={!!errors.destinoNombre}
-                      />
+                      <div className="flex gap-2">
+                        <div className="min-w-0 flex-1">
+                          <ClienteSearchInput
+                            id="destino-nombre"
+                            value={destino.nombre}
+                            onChange={(v) =>
+                              setDestino({
+                                ...destino,
+                                nombre: v,
+                                clienteId: undefined,
+                                domicilioId: undefined,
+                              })
+                            }
+                            onSelectCliente={(c) => {
+                              setDestino({
+                                nombre: c.nombre,
+                                telefono: c.telefono,
+                                calle: c.calle ?? "",
+                                numero: c.numero ?? "",
+                                piso: c.piso ?? "",
+                                referencia: c.referencia ?? "",
+                                localidadId: c.localidadId ?? destino.localidadId,
+                                sectorId: c.sectorId ?? destino.sectorId,
+                                clienteId: c.id,
+                              });
+                            }}
+                            placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                            ariaInvalid={!!errors.destinoNombre}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="shrink-0"
+                          title="Alta rápida de cliente"
+                          aria-label="Alta rápida de cliente para el destino"
+                          onClick={() => setAltaRapidaBloque("destino")}
+                        >
+                          <UserPlus2 className="size-4" />
+                        </Button>
+                      </div>
                       {errors.destinoNombre && (
                         <p className="text-xs text-destructive">{errors.destinoNombre}</p>
                       )}
@@ -877,7 +1025,7 @@ export function NuevaEncomiendaView({
                   )}
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <div className="grid gap-1.5">
                     <Label className="text-xs text-muted-foreground">Dónde se paga el flete</Label>
                     <Select value={lugarPago} onValueChange={(v) => setLugarPago(v as LugarPagoApi)}>
@@ -907,17 +1055,6 @@ export function NuevaEncomiendaView({
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="remito-manual" className="text-xs text-muted-foreground">
-                      Remito manual (opcional)
-                    </Label>
-                    <Input
-                      id="remito-manual"
-                      placeholder="Solo si ya tenés un número impreso"
-                      value={remitoManual}
-                      onChange={(e) => setRemitoManual(e.target.value)}
-                    />
                   </div>
                 </div>
 
@@ -993,24 +1130,39 @@ export function NuevaEncomiendaView({
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="grid gap-1.5">
                       <Label className="text-xs text-muted-foreground">Origen</Label>
-                      <ClienteSearchInput
-                        value={origen.nombre}
-                        onChange={(v) => setOrigen({ ...origen, nombre: v, clienteId: undefined })}
-                        onSelectCliente={(c) => {
-                          setOrigen({
-                            nombre: c.nombre,
-                            telefono: c.telefono,
-                            clienteId: c.id,
-                            calle: c.calle ?? "",
-                            numero: c.numero ?? "",
-                            piso: c.piso ?? "",
-                            referencia: c.referencia ?? "",
-                            localidadId: c.localidadId ?? origen.localidadId,
-                          });
-                          setRemitenteConfirmado(true);
-                        }}
-                        placeholder="Nombre — buscá por nombre o cargá uno nuevo"
-                      />
+                      <div className="flex gap-2">
+                        <div className="min-w-0 flex-1">
+                          <ClienteSearchInput
+                            value={origen.nombre}
+                            onChange={(v) => setOrigen({ ...origen, nombre: v, clienteId: undefined })}
+                            onSelectCliente={(c) => {
+                              setOrigen({
+                                nombre: c.nombre,
+                                telefono: c.telefono,
+                                clienteId: c.id,
+                                calle: c.calle ?? "",
+                                numero: c.numero ?? "",
+                                piso: c.piso ?? "",
+                                referencia: c.referencia ?? "",
+                                localidadId: c.localidadId ?? origen.localidadId,
+                              });
+                              setRemitenteConfirmado(true);
+                            }}
+                            placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="shrink-0"
+                          title="Alta rápida de cliente"
+                          aria-label="Alta rápida de cliente para el remitente de la carga"
+                          onClick={() => setAltaRapidaBloque("origen")}
+                        >
+                          <UserPlus2 className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                     <div className="grid gap-1.5">
                       <Label className="text-xs text-muted-foreground">Teléfono</Label>
@@ -1756,6 +1908,11 @@ export function NuevaEncomiendaView({
                       </span>
                     )}
                   </div>
+                  {e.remitoManualNumero && (
+                    <p className="text-[11px] text-muted-foreground">
+                      N° de sistema: <span className="font-mono">{e.numero}</span>
+                    </p>
+                  )}
                   <p className="mt-1.5 truncate text-xs text-muted-foreground">
                     {e.remitenteNombre ?? "—"} → {e.destinatarioNombre ?? "—"}
                   </p>
@@ -1773,6 +1930,26 @@ export function NuevaEncomiendaView({
           </CardContent>
         </Card>
       </div>
+
+      <ClienteAltaRapidaDialog
+        // Cambia de "origen"/"destino"/"cerrado" en cada apertura -> fuerza
+        // remount, que es lo que le da al draft interno del modal su
+        // estado inicial fresco sin necesitar un useEffect (ver comentario
+        // en cliente-alta-rapida-dialog.tsx).
+        key={altaRapidaBloque ?? "cerrado"}
+        open={altaRapidaBloque !== null}
+        onOpenChange={(next) => {
+          if (!next) setAltaRapidaBloque(null);
+        }}
+        localidades={localidades}
+        nombreInicial={altaRapidaBloque === "origen" ? origen.nombre : destino.nombre}
+        telefonoInicial={altaRapidaBloque === "origen" ? origen.telefono : destino.telefono}
+        calleInicial={altaRapidaBloque === "origen" ? origen.calle : destino.calle}
+        localidadIdInicial={
+          altaRapidaBloque === "origen" ? origen.localidadId : destino.localidadId
+        }
+        onClienteListo={handleClienteAltaRapida}
+      />
     </div>
   );
 }
