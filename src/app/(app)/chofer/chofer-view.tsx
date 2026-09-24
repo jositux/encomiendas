@@ -698,7 +698,13 @@ function EnvioDePlanillaRow({
         </p>
       </div>
       {puedeEntregar && (
-        <div className="flex gap-2">
+        // BUG real visto en vivo en /chofer-minimal (2026-09-24, celular
+        // real, ancho angosto): sin flex-wrap acá, cuando esta fila pasa a
+        // su propia línea (el flex-wrap del contenedor de arriba ya hace
+        // eso), los 3 botones seguían todos en una sola fila y "Incidencia"
+        // quedaba cortado fuera de la pantalla en vez de acomodarse. Con
+        // flex-wrap acá también, se acomodan en 2 líneas si no entran.
+        <div className="flex flex-wrap gap-2">
           <Button size="sm" className="gap-1.5" onClick={() => setDialogo("entregar")}>
             <PackageCheck className="size-4" />
             Entregar
