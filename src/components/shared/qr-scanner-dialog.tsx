@@ -33,7 +33,29 @@ export function QrScannerDialog({
   title?: string;
   description?: string;
 }) {
-  const videoRef = React.useRef<HTMLVideoElement>(null);
+  // BUG real encontrado en vivo (2026-09-24, probado en Mac y celular): con
+  // un useRef normal, videoRef.current podía seguir siendo null cuando el
+  // efecto de abajo corría por primera vez -- DialogContent (Radix) monta
+  // su contenido a través de un portal + Presence con su propio ciclo de
+  // efectos, y no hay garantía de que el nodo <video> ya esté en el DOM en
+  // la primera pasada de un efecto declarado en este componente. Con el
+  // guard `if (!video) return;` de antes, eso hacía que el efecto cortara
+  // en silencio SIN pedir la cámara nunca -- ni error, ni cartel de
+  // permiso, el visor quedaba negro para siempre.
+  //
+  // Un callback ref dispara recién cuando el nodo realmente se monta. El
+  // nodo en sí se guarda en un useRef normal (no en useState) porque el
+  // video se muta imperativamente más abajo (srcObject, play()) -- mutar
+  // directamente un valor de useState no está permitido (regla
+  // react-hooks/immutability). `videoReady` es solo un booleano en
+  // useState para que ese montaje dispare un re-render y, con él, la
+  // re-ejecución del efecto de abajo (que depende de `videoReady`).
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const [videoReady, setVideoReady] = React.useState(false);
+  const setVideoRef = React.useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    setVideoReady(!!node);
+  }, []);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const frameRef = React.useRef<number | null>(null);
@@ -53,12 +75,7 @@ export function QrScannerDialog({
   const detectedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!open) return;
-    // Se captura el nodo <video> una sola vez acá (en vez de releer
-    // videoRef.current más abajo, incluido en el cleanup) porque el
-    // elemento se renderiza siempre que el diálogo está abierto (ver JSX:
-    // el mensaje de error es un overlay, no reemplaza al <video>), así que
-    // es estable durante todo el ciclo de vida de este efecto.
+    if (!open || !videoReady) return;
     const video = videoRef.current;
     if (!video) return;
     detectedRef.current = false;
@@ -124,7 +141,7 @@ export function QrScannerDialog({
       streamRef.current = null;
       video.srcObject = null;
     };
-  }, [open]);
+  }, [open, videoReady]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -138,11 +155,11 @@ export function QrScannerDialog({
         </DialogHeader>
         <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-md bg-black">
           {/* El <video> se renderiza siempre que el diálogo está abierto —
-              nunca condicionado por `error` — para que videoRef.current sea
-              estable durante todo el efecto de arriba (si se reemplazara
-              por el mensaje de error, el ref se perdería a mitad de un
-              reintento). El error se muestra como overlay encima. */}
-          <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
+              nunca condicionado por `error` — para que el nodo sea estable
+              durante todo el efecto de arriba (si se reemplazara por el
+              mensaje de error, se perdería a mitad de un reintento). El
+              error se muestra como overlay encima. */}
+          <video ref={setVideoRef} className="h-full w-full object-cover" muted playsInline />
           {error ? (
             <div className="absolute inset-0 flex items-center justify-center bg-black/90 px-6">
               <p className="text-center text-sm text-white">{error}</p>
