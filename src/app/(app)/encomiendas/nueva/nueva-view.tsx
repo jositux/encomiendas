@@ -19,6 +19,7 @@ import {
   Printer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatCurrency } from "@/lib/format";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { ClienteSearchInput } from "@/components/shared/cliente-search-input";
@@ -1915,6 +1916,18 @@ export function NuevaEncomiendaView({
                   )}
                   <p className="mt-1.5 truncate text-xs text-muted-foreground">
                     {e.remitenteNombre ?? "—"} → {e.destinatarioNombre ?? "—"}
+                  </p>
+                  {/* NOTA chofer 2026-09-24: forma de pago (y el monto contra
+                      reembolso cuando aplica) visibles de un vistazo en la
+                      lista, sin tener que abrir el remito — para que el
+                      chofer no se confunda con lo que tiene que cobrar. */}
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    Pago:{" "}
+                    {LUGARES_PAGO.find((l) => l.value === e.lugarPago)?.label ?? e.lugarPago} ·{" "}
+                    {FORMAS_PAGO.find((f) => f.value === e.formaPago)?.label ?? e.formaPago}
+                    {e.tipo === "efectivo" && e.contrarreembolsoImporte && (
+                      <> · Contra reembolso: {formatCurrency(Number(e.contrarreembolsoImporte))}</>
+                    )}
                   </p>
                   <a
                     href={`/remito/${encodeURIComponent(e.numero)}`}
