@@ -1,7 +1,7 @@
 import { getSession } from "@/server/session";
 import { listRecorridos } from "@/server/services/recorridos";
 import { listVehiculos } from "@/server/services/vehiculos";
-import { listUsuariosSeguro } from "@/server/services/usuarios";
+import { listChoferesSeguro } from "@/server/services/choferes";
 import { DespachosView } from "./despachos-view";
 
 // Feature A del pedido "Cortar / Crear despacho" (2026-09-18, ver sección 32
@@ -14,16 +14,23 @@ import { DespachosView } from "./despachos-view";
 // Mismo criterio que /rutas (page.tsx de al lado, mismo patrón): recorridos
 // y vehículos no se envuelven en "seguro" porque son el dato central de la
 // pantalla (sin ellos no hay nada que cortar) — un 403 acá debería
-// mostrarse, no esconderse. `usuarios` sí usa la variante `Seguro()`: es
+// mostrarse, no esconderse. `choferes` sí usa la variante `Seguro()`: es
 // solo para el override opcional de "Chofer" (el default del recorrido ya
 // alcanza sin este combo), no vale la pena que su 403 rompa toda la
 // pantalla.
+//
+// 2026-09-24 (CONTRATO-2026-09-23-02): antes esta lista salía de
+// listUsuariosSeguro() (GET /usuarios), que 403 para `operador` — el rol
+// que más usa Despachos — dejando el combo siempre vacío para ese rol. El
+// backend agregó GET /choferes acotado a {id, nombre} y protegido con
+// `despachos:leer` en vez de `usuarios:leer`, así que ahora sí resuelve
+// para `operador`/`supervisor`/`administracion`.
 export default async function DespachosPage() {
   const session = await getSession();
-  const [recorridos, vehiculos, usuarios] = await Promise.all([
+  const [recorridos, vehiculos, choferes] = await Promise.all([
     listRecorridos(),
     listVehiculos(),
-    listUsuariosSeguro(),
+    listChoferesSeguro(),
   ]);
   const activos = recorridos.filter((r) => r.activo);
   // Nota 3 del equipo de backend (2026-09-18, ver GET /auth/yo): todo
@@ -49,7 +56,7 @@ export default async function DespachosPage() {
       recorridos={recorridosVisibles}
       sinRecorridosPorAlcance={sinRecorridosPorAlcance}
       vehiculos={vehiculos}
-      usuarios={usuarios}
+      choferes={choferes}
       // 2026-09-18: confirmado en vivo con chofer_obera (que no lo tiene) el
       // texto literal del 403 real de POST /despachos: "Tu usuario no tiene
       // el permiso despachos:crear." — primera confirmación de este string,
