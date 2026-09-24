@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Package, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { NAV_GROUPS } from "@/lib/nav-config";
+import { NAV_GROUPS, esVisibleParaPermisos } from "@/lib/nav-config";
 import { useUiStore } from "@/store/ui-store";
 import { NavLinkItem } from "./nav-link-item";
 import { Button } from "@/components/ui/button";
@@ -47,8 +47,8 @@ export function SidebarContent({
       <ScrollArea className="flex-1 px-3 py-3">
         <nav className="flex flex-col gap-3">
           {NAV_GROUPS.map((group) => {
-            const items = group.items.filter(
-              (item) => !item.permiso || permisos.includes(item.permiso)
+            const items = group.items.filter((item) =>
+              esVisibleParaPermisos(item, permisos)
             );
             if (items.length === 0) return null;
             return (

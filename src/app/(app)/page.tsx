@@ -7,7 +7,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 
-import { NAV_GROUPS } from "@/lib/nav-config";
+import { NAV_GROUPS, esVisibleParaPermisos } from "@/lib/nav-config";
 import { getEncomiendas, getMovimientosCrr } from "@/server/db";
 import { listPuntosSeguro } from "@/server/services/puntos";
 import { getSession } from "@/server/session";
@@ -85,12 +85,11 @@ export default async function HomePage() {
       <div className="flex flex-col gap-8">
         {NAV_GROUPS.map((group) => {
           // Mismo filtro por permiso real que el menú lateral (ver
-          // app-sidebar.tsx y nav-config.ts) — sin esto, un item con
-          // `permiso` (ej. "Chofer") seguía apareciendo acá aunque ya no
-          // apareciera en el menú, porque este grid tiene su propia copia
-          // de NAV_GROUPS sin filtrar. 2026-09-17.
-          const items = group.items.filter(
-            (item) => !item.permiso || session?.permisos.includes(item.permiso)
+          // app-sidebar.tsx) — antes cada uno tenía su propia copia de este
+          // filtro y se desincronizaban (2026-09-17); ahora ambos usan
+          // esVisibleParaPermisos() desde nav-config.ts.
+          const items = group.items.filter((item) =>
+            esVisibleParaPermisos(item, session?.permisos)
           );
           if (items.length === 0) return null;
           return (
