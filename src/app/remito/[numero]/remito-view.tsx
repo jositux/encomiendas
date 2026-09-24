@@ -194,6 +194,12 @@ function Panel({
         </p>
       </div>
 
+      {/* NOTA-2026-09-24: en un envio contra reembolso, importes.aCobrar
+          viene en 0 desde el backend (no calza con total) -- pero la plata
+          que el chofer tiene que cobrar en destino es justamente el total
+          del contra reembolso. Mostrar 0 ahi confunde al chofer, asi que
+          mientras el backend no lo corrija, en este caso mostramos el mismo
+          valor que Total. */}
       <div className="grid grid-cols-3 gap-2 border-t pt-2 text-center print:border-black">
         <div>
           <p className="text-xs text-muted-foreground print:text-black">Cobrado</p>
@@ -201,7 +207,13 @@ function Panel({
         </div>
         <div>
           <p className="text-xs text-muted-foreground print:text-black">A cobrar</p>
-          <p className="font-semibold">{money(remito.importes.aCobrar)}</p>
+          <p className="font-semibold">
+            {money(
+              remito.contrarreembolso !== null
+                ? remito.importes.total
+                : remito.importes.aCobrar
+            )}
+          </p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground print:text-black">Total</p>
