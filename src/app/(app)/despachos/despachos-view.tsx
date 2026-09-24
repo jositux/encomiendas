@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { crearDespachoAction } from "@/server/actions";
 import type { RecorridoBackend, VehiculoBackend } from "@/types";
-import type { UsuarioApi } from "@/server/services/usuarios";
+import type { ChoferApi } from "@/server/services/choferes";
 import type { PlanillaGenerada } from "@/server/services/custodia";
 
 // Feature A del pedido "Cortar / Crear despacho" (2026-09-18, sección 32 del
@@ -33,7 +33,7 @@ export function DespachosView({
   recorridos,
   sinRecorridosPorAlcance,
   vehiculos,
-  usuarios,
+  choferes,
   permisos,
 }: {
   recorridos: RecorridoBackend[];
@@ -43,7 +43,7 @@ export function DespachosView({
   // haya ningún recorrido activo en todo el sistema.
   sinRecorridosPorAlcance: boolean;
   vehiculos: VehiculoBackend[];
-  usuarios: UsuarioApi[];
+  choferes: ChoferApi[];
   // 2026-09-18: gatea el botón "Cortar / Declarar salida" — confirmado en
   // vivo que POST /despachos pide `despachos:crear` (403 real con
   // chofer_obera). Mismo patrón puedeAccion() que el resto de la app.
@@ -176,9 +176,9 @@ export function DespachosView({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="default">Usar el predeterminado</SelectItem>
-                      {usuarios.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.nombre}
+                      {choferes.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.nombre}
                         </SelectItem>
                       ))}
                     </SelectContent>

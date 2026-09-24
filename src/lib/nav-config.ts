@@ -114,12 +114,25 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/clientes",
         icon: Users,
         description: "Base de clientes y cuentas corrientes",
+        // 2026-09-24: confirmado en vivo con chofer_obera — GET /clientes
+        // (sin variante "segura", es el dato central de la pantalla) tira
+        // "Tu usuario no tiene el permiso clientes:leer." sin atrapar,
+        // rompiendo la pantalla entera. Mismo criterio que "Chofer": mejor
+        // ocultar el ítem que dejarlo y que explote al entrar.
+        permiso: "clientes:leer",
       },
       {
         title: "Usuarios y roles",
         href: "/usuarios",
         icon: UserRound,
         description: "Accesos reales al sistema: usuarios, roles y permisos",
+        // 2026-09-24: `usuarios:leer` ya está documentado como precondición
+        // dura de esta pantalla (claude/esquema-permisos.md — GET /usuarios
+        // es su dato central, sin variante "segura" acá a propósito) y
+        // confirmado en vivo que rompe para chofer_obera. Mismo criterio
+        // que "Chofer"/"Clientes": se oculta el ítem en vez de mostrarlo y
+        // que explote.
+        permiso: "usuarios:leer",
       },
     ],
   },
