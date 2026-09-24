@@ -29,7 +29,9 @@ export async function actualizarClienteAction(
 }
 
 export async function searchClientesAction(q: string) {
-  return clientesService.searchClientesPorNombre(q);
+  // BUG-2026-09-24-01: variante segura — ver el comentario junto a
+  // searchClientesPorNombreSeguro() en services/clientes.ts.
+  return clientesService.searchClientesPorNombreSeguro(q);
 }
 
 export async function removeClienteAction(id: string) {

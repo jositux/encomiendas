@@ -30,7 +30,12 @@ export default function LoginPage() {
       setError(result.error ?? "No se pudo iniciar sesión.");
       return;
     }
-    router.replace("/");
+    // NOTA-2026-09-23-06: el aterrizaje directo pasó a ser "Nueva
+    // encomienda" (antes "/", la vieja pantalla de inicio con accesos
+    // rápidos) — decisión del humano del backend, "por el momento", es el
+    // único flujo que se está probando ahora. Mismo destino que proxy.ts
+    // usa cuando una sesión ya logueada entra a /login.
+    router.replace("/encomiendas/nueva");
     router.refresh();
   }
 

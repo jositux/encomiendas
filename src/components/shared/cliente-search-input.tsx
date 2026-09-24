@@ -186,7 +186,9 @@ export function ClienteSearchInput({
                   <UserCheck className="size-3.5 text-muted-foreground" />
                   {c.nombre}
                 </span>
-                <span className="pl-5 text-xs text-muted-foreground">{c.telefono}</span>
+                <span className="pl-5 text-xs text-muted-foreground">
+                  {c.telefono} · {c.localidadNombre ?? "—"}
+                </span>
               </button>
             ))}
         </PopoverContent>

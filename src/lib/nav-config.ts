@@ -1,8 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Truck,
   PackagePlus,
-  LayoutDashboard,
   Inbox,
   PackageSearch,
   Users,
@@ -39,18 +37,17 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Operación",
     items: [
-      {
-        title: "Tablero principal",
-        href: "/panel",
-        icon: LayoutDashboard,
-        description: "Vista general de procesos, entregas y pendientes",
-      },
-      {
-        title: "Levantes",
-        href: "/levantes",
-        icon: Truck,
-        description: "Encomiendas a retirar por ruta",
-      },
+      // NOTA-2026-09-23-06 (decisión del humano del backend, "por el
+      // momento"): se ocultan del menú "Tablero principal" (/panel) y
+      // "Levantes" (/levantes) — el mostrador debe entrar y quedar parado
+      // en "Nueva encomienda", que es lo único que se está probando ahora.
+      // Es ocultar, no borrar: las rutas y el código de esas dos pantallas
+      // siguen intactos (src/app/(app)/panel, src/app/(app)/levantes) y
+      // entrar por URL directa sigue funcionando — solo se sacan estas dos
+      // entradas de NAV_GROUPS (fuente única de sidebar Y de la grilla de
+      // accesos rápidos de "/", ver app-sidebar.tsx y (app)/page.tsx). El
+      // aterrizaje directo en Nueva encomienda se resolvió aparte, en
+      // login/page.tsx y proxy.ts.
       {
         title: "Nueva encomienda",
         href: "/encomiendas/nueva",

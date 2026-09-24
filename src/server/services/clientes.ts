@@ -49,6 +49,14 @@ export interface ClienteApi {
   activo: boolean;
   // Domicilio unico, plano (ver nota arriba — 2026-09-11).
   localidadId: string;
+  // CONTRATO-2026-09-23-01: nombre legible de la localidad, resuelto por
+  // el backend (LEFT JOIN) en las cuatro respuestas de cliente (GET
+  // /clientes, GET /clientes/{id}, POST /clientes, PATCH /clientes/{id}).
+  // Contractualmente siempre presente (localidad_id es NOT NULL con FK),
+  // pero Sebastian avisó que todavía no lo verificó en vivo contra el
+  // ambiente desplegado (solo contra su build local + el OpenAPI
+  // exportado) — de ahí el fallback "—" donde se muestra, por las dudas.
+  localidadNombre: string;
   sectorId: string;
   calle: string;
   numero: string | null;
@@ -103,6 +111,28 @@ export async function searchClientesPorNombre(q: string): Promise<ClienteApi[]> 
   }
 
   return [...porPrimeraPalabra, ...porOtraPalabra].slice(0, 8);
+}
+
+// BUG-2026-09-24-01: searchClientesPorNombre() nunca tuvo la variante
+// "segura" que sí tienen listUsuariosSeguro()/listChoferesSeguro() (mismo
+// criterio: es un autocompletado, dato secundario — sin él, el campo de
+// Origen/Destino de Nueva Encomienda sigue funcionando como texto libre,
+// per el propio comentario de ClienteSearchInput). Al no atraparse, un
+// usuario sin `clientes:leer` (confirmado en vivo con chofer_obera) hacía
+// que la búsqueda fallara en silencio — nunca mostraba sugerencias, sin
+// avisar por qué. Pasó de curiosidad a bug real con NOTA-2026-09-23-06
+// (aterrizaje directo en Nueva Encomienda para TODO usuario, chofer
+// incluido): ver hilo en cc-relay.
+export async function searchClientesPorNombreSeguro(q: string): Promise<ClienteApi[]> {
+  try {
+    return await searchClientesPorNombre(q);
+  } catch (err) {
+    console.error(
+      "No se pudo buscar clientes (el campo sigue funcionando como texto libre, sin sugerencias):",
+      err
+    );
+    return [];
+  }
 }
 
 // GET /clientes sin `q` devuelve el listado completo (confirmado en vivo) —

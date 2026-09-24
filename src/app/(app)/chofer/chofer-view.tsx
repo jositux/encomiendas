@@ -447,7 +447,10 @@ function BuscadorEnvioSuelto({
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
             <div>
               <p className="font-mono text-sm font-semibold">#{guiaCorta(envio.numero)}</p>
-              <p className="text-sm">{envio.destinatarioNombre}</p>
+              <p className="text-sm">
+                {envio.destinatarioNombre} · {envio.cantidadBultos} bulto
+                {envio.cantidadBultos === 1 ? "" : "s"}
+              </p>
               <p className="text-xs text-muted-foreground">
                 {estado === "EN_CUSTODIA"
                   ? "En custodia de otro usuario — \"Recibir acá\" te lo transfiere a este punto."
@@ -479,7 +482,10 @@ function BuscadorEnvioSuelto({
           <div className="flex items-center justify-between gap-3 rounded-md border p-3">
             <div>
               <p className="font-mono text-sm font-semibold">#{guiaCorta(envio.numero)}</p>
-              <p className="text-sm">{envio.destinatarioNombre}</p>
+              <p className="text-sm">
+                {envio.destinatarioNombre} · {envio.cantidadBultos} bulto
+                {envio.cantidadBultos === 1 ? "" : "s"}
+              </p>
             </div>
             <Badge variant="outline">{estado}</Badge>
           </div>
@@ -650,6 +656,15 @@ function EnvioDePlanillaRow({
         <p className="text-sm">{envio.destinatarioNombre}</p>
         <p className="text-xs text-muted-foreground">
           {envio.destinatarioCalle} {envio.destinatarioNumero ?? ""} · {envio.destinatarioTelefono}
+        </p>
+        {/* NOTA-2026-09-23-07: el chofer toma custodia de N bultos, no de
+            "un paquete" — sin este numero no puede contar contra lo que
+            tiene en la mano. El dato ya viaja en la ficha del envio (no
+            hizo falta nada del backend), asi que se muestra siempre, junto
+            al numero y al destinatario (tambien cuando es 1, a proposito:
+            no se esconde por ser singular). */}
+        <p className="text-xs text-muted-foreground">
+          {envio.cantidadBultos} bulto{envio.cantidadBultos === 1 ? "" : "s"}
         </p>
       </div>
       {puedeEntregar && (
