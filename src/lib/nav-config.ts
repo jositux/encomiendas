@@ -153,3 +153,14 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 export const ALL_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+
+// Filtro por permiso real, compartido por el menú lateral (app-sidebar.tsx)
+// y la grilla de accesos rápidos de "/" ((app)/page.tsx) — antes cada uno
+// tenía su propia copia del mismo `!item.permiso || permisos.includes(...)`
+// y en 2026-09-17 eso hizo que un item ya oculto del menú lateral siguiera
+// apareciendo en la grilla, porque nadie había actualizado esa segunda
+// copia. Un solo lugar, una sola vez que arreglar.
+export function esVisibleParaPermisos(item: NavItem, permisos: string[] | undefined): boolean {
+  return !item.permiso || (permisos ?? []).includes(item.permiso);
+}
+

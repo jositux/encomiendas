@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
-import { Menu, LogOut, ChevronDown, RotateCcw } from "lucide-react";
+import { Menu, LogOut, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -24,11 +24,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { SidebarContent } from "./app-sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { logout } from "@/server/auth-actions";
-import { resetDemoDataAction } from "@/server/actions";
 import { ALL_NAV_ITEMS } from "@/lib/nav-config";
 import { initials } from "@/lib/format";
 import type { SesionUsuario, PuntoBackend } from "@/types";
@@ -41,8 +39,6 @@ export function AppHeader({
   sucursal: PuntoBackend | null;
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
-  const [resetOpen, setResetOpen] = React.useState(false);
-  const [pending, setPending] = React.useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -54,14 +50,6 @@ export function AppHeader({
     await logout();
     toast.success("Sesión finalizada");
     router.replace("/login");
-    router.refresh();
-  }
-
-  async function handleReset() {
-    setPending(true);
-    await resetDemoDataAction();
-    setPending(false);
-    toast.success("Datos de demostración restablecidos");
     router.refresh();
   }
 
@@ -132,26 +120,12 @@ export function AppHeader({
             </p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem disabled={pending} onClick={() => setResetOpen(true)}>
-            <RotateCcw />
-            {pending ? "Restableciendo..." : "Restablecer datos demo"}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={handleLogout}>
             <LogOut />
             Cerrar sesión
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <ConfirmDialog
-        open={resetOpen}
-        onOpenChange={setResetOpen}
-        title="¿Restablecer los datos de demostración?"
-        description="Se van a descartar todos los cambios (encomiendas, clientes, personal, cierres de caja, etc.) y se va a volver al set de datos inicial. Esta acción no se puede deshacer."
-        confirmLabel="Restablecer"
-        onConfirm={handleReset}
-      />
     </header>
   );
 }
