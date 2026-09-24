@@ -100,7 +100,7 @@ function envioFixture(overrides: Partial<EnvioApi> = {}): EnvioApi {
 // único mientras haya un solo ClienteSearchInput visible a la vez (por eso
 // cada test lo usa recién en el momento justo del flujo, nunca con dos
 // bloques de "nombre" mostrados juntos).
-const PLACEHOLDER_NOMBRE = "Nombre — buscá por nombre o cargá uno nuevo";
+const PLACEHOLDER_NOMBRE = "Apellido y nombres — buscá por nombre o cargá uno nuevo";
 
 function inputJuntoALabel(texto: string): HTMLInputElement {
   const label = screen.getByText(texto);

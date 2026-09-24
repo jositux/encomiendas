@@ -271,7 +271,7 @@ export function CargaRapidaView({
                         });
                         setRemitenteConfirmado(true);
                       }}
-                      placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                      placeholder="Apellido y nombres — buscá por nombre o cargá uno nuevo"
                     />
                   </div>
                   <Button
@@ -653,7 +653,7 @@ export function CargaRapidaView({
                             },
                           });
                         }}
-                        placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                        placeholder="Apellido y nombres — buscá por nombre o cargá uno nuevo"
                         ariaInvalid={!!fila.errores.nombre}
                       />
                       {fila.errores.nombre && (
