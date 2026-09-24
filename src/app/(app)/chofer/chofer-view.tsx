@@ -10,9 +10,11 @@ import {
   CircleX,
   TriangleAlert,
   ClipboardList,
+  QrCode,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { QrScannerDialog } from "@/components/shared/qr-scanner-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -308,9 +310,10 @@ function BuscadorPlanillaPorCodigo({
 }) {
   const [codigo, setCodigo] = React.useState("");
   const [buscando, setBuscando] = React.useState(false);
+  const [scannerOpen, setScannerOpen] = React.useState(false);
 
-  async function buscar() {
-    const texto = codigo.trim();
+  async function buscar(valorOverride?: string) {
+    const texto = (valorOverride ?? codigo).trim();
     if (!texto) return;
     setBuscando(true);
     try {
@@ -318,6 +321,16 @@ function BuscadorPlanillaPorCodigo({
     } finally {
       setBuscando(false);
     }
+  }
+
+  // El valor leído por cámara se usa directo (no se espera a que `codigo`
+  // se actualice) para no depender del timing de la actualización de
+  // estado de React -- mismo criterio que ya usa handleScan en los otros
+  // buscadores por código.
+  function handleScan(valor: string) {
+    setScannerOpen(false);
+    setCodigo(valor);
+    buscar(valor);
   }
 
   return (
@@ -338,12 +351,29 @@ function BuscadorPlanillaPorCodigo({
             className="font-mono"
             onKeyDown={(e) => e.key === "Enter" && buscar()}
           />
-          <Button onClick={buscar} disabled={buscando || !codigo.trim()} className="gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setScannerOpen(true)}
+            aria-label="Escanear código QR de la planilla"
+            title="Escanear código QR"
+          >
+            <QrCode className="size-4" />
+          </Button>
+          <Button onClick={() => buscar()} disabled={buscando || !codigo.trim()} className="gap-1.5">
             {buscando ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
             Buscar
           </Button>
         </div>
       </CardContent>
+      <QrScannerDialog
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onScan={handleScan}
+        title="Escanear planilla"
+        description="Apuntá la cámara al QR de la planilla."
+      />
     </Card>
   );
 }
