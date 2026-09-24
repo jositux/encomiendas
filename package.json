@@ -65,5 +65,18 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^5.0.1"
+  },
+  "pnpm": {
+    "supportedArchitectures": {
+      "os": [
+        "darwin",
+        "linux",
+        "current"
+      ],
+      "cpu": [
+        "arm64",
+        "x64"
+      ]
+    }
   }
 }
