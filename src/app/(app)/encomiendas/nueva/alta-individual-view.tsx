@@ -39,6 +39,13 @@ import {
   TIPOS,
   LUGARES_PAGO,
   FORMAS_PAGO,
+  LUGARES_PAGO_POR_TIPO,
+  lugarPagoValido,
+  lugarPagoPorDefecto,
+  permiteContrarreembolso,
+  permiteValorDeclarado,
+  permiteGastoYFlete,
+  permiteElegirFormaPago,
   emptyOrigen,
   emptyDestino,
   guiaDeEnvio,
@@ -67,6 +74,10 @@ export function AltaIndividualView({
   session,
   localidades,
   sectores,
+  // NOTA-2026-09-23-05 (punto 3): token que sube en nueva-view.tsx cada vez
+  // que se crea/elige el remitente por el modal de alta rápida -- dispara
+  // el foco automático del campo de destino (ver autoFocus más abajo).
+  focoDestino,
 }: {
   origen: OrigenState;
   setOrigen: React.Dispatch<React.SetStateAction<OrigenState>>;
@@ -77,6 +88,7 @@ export function AltaIndividualView({
   session: SesionUsuario | null;
   localidades: LocalidadBackend[];
   sectores: SectorApi[];
+  focoDestino: number;
 }) {
   const [tipo, setTipo] = React.useState<TipoEnvioApi>("paqueteria");
   const [lugarPago, setLugarPago] = React.useState<LugarPagoApi>("destino");
@@ -135,7 +147,7 @@ export function AltaIndividualView({
     if (!bultosCheck.success) next.bultos = bultosCheck.error.issues[0].message;
     const fleteCheck = montoNoNegativoSchema.safeParse(flete === "" ? 0 : flete);
     if (!fleteCheck.success) next.flete = fleteCheck.error.issues[0].message;
-    if (tipo === "efectivo") {
+    if (permiteContrarreembolso(tipo)) {
       const montoCheck = montoPositivoSchema.safeParse(montoCrr === "" ? 0 : montoCrr);
       if (!montoCheck.success) next.montoCrr = montoCheck.error.issues[0].message;
     }
@@ -193,14 +205,15 @@ export function AltaIndividualView({
           domicilioId: destino.domicilioId,
         },
         cantidadBultos: bultos,
-        fleteImporte: flete === "" ? 0 : Number(flete),
+        fleteImporte: permiteGastoYFlete(tipo) ? (flete === "" ? 0 : Number(flete)) : 0,
         tipo,
         lugarPago,
-        formaPago,
-        contrarreembolsoImporte: tipo === "efectivo" ? Number(montoCrr) : undefined,
+        formaPago: permiteElegirFormaPago(tipo) ? formaPago : "contado",
+        contrarreembolsoImporte: permiteContrarreembolso(tipo) ? Number(montoCrr) : undefined,
         remitoManualNumero: remitoNormalizado(),
-        valorDeclarado: valorDeclarado === "" ? undefined : Number(valorDeclarado),
-        gasto: gasto === "" ? undefined : Number(gasto),
+        valorDeclarado:
+          permiteValorDeclarado(tipo) && valorDeclarado !== "" ? Number(valorDeclarado) : undefined,
+        gasto: permiteGastoYFlete(tipo) && gasto !== "" ? Number(gasto) : undefined,
         observaciones: observaciones.trim() || undefined,
       };
       const resultado = await crearEnvioAction(data, clientUuid());
@@ -216,7 +229,11 @@ export function AltaIndividualView({
           setErrors((prev) => ({ ...prev, remitoManual: resultado.title }));
           remitoInputRef.current?.focus();
         }
-        toast.error(resultado.title || resultado.message);
+        toast.error(
+          resultado.code === "REGLA_DE_TIPO"
+            ? resultado.message
+            : resultado.title || resultado.message
+        );
         return;
       }
       setCargados((prev) => [resultado.envio, ...prev]);
@@ -299,7 +316,7 @@ export function AltaIndividualView({
                           localidadId: c.localidadId ?? origen.localidadId,
                         })
                       }
-                      placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                      placeholder="Apellido y nombres — buscá por nombre o cargá uno nuevo"
                       ariaInvalid={!!errors.origenNombre}
                     />
                   </div>
@@ -439,8 +456,9 @@ export function AltaIndividualView({
                           clienteId: c.id,
                         });
                       }}
-                      placeholder="Nombre — buscá por nombre o cargá uno nuevo"
+                      placeholder="Apellido y nombres — buscá por nombre o cargá uno nuevo"
                       ariaInvalid={!!errors.destinoNombre}
+                      autoFocus={focoDestino}
                     />
                   </div>
                   <Button
@@ -555,7 +573,29 @@ export function AltaIndividualView({
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="grid gap-1.5">
               <Label className="text-xs text-muted-foreground">Tipo</Label>
-              <Select value={tipo} onValueChange={(v) => setTipo(v as TipoEnvioApi)}>
+              <Select
+                value={tipo}
+                onValueChange={(v) => {
+                  // CONTRATO-2026-09-24-01 (punto 2, Sebastian): cada tipo
+                  // tiene su propio set valido de lugarPago/formaPago y sus
+                  // propios campos prohibidos -- al cambiar de tipo hay que
+                  // limpiar/ajustar todo lo que ya no vale, si no el default
+                  // viejo ("destino") manda un 400 REGLA_DE_TIPO apenas se
+                  // guarda un trámite o un interno.
+                  const nuevoTipo = v as TipoEnvioApi;
+                  setTipo(nuevoTipo);
+                  if (!lugarPagoValido(nuevoTipo, lugarPago)) {
+                    setLugarPago(lugarPagoPorDefecto(nuevoTipo));
+                  }
+                  if (!permiteElegirFormaPago(nuevoTipo)) setFormaPago("contado");
+                  if (!permiteContrarreembolso(nuevoTipo)) setMontoCrr("");
+                  if (!permiteValorDeclarado(nuevoTipo)) setValorDeclarado("");
+                  if (!permiteGastoYFlete(nuevoTipo)) {
+                    setFlete("");
+                    setGasto("");
+                  }
+                }}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -582,22 +622,27 @@ export function AltaIndividualView({
               />
               {errors.bultos && <p className="text-xs text-destructive">{errors.bultos}</p>}
             </div>
-            <div className="grid gap-1.5">
-              <Label className="text-xs text-muted-foreground">Flete ($)</Label>
-              <Input
-                type="text"
-                inputMode="decimal"
-                placeholder="0"
-                value={flete}
-                onChange={(e) => {
-                  const cleaned = sanitizeMoneyInput(e.target.value);
-                  setFlete(cleaned === "" ? "" : Math.max(0, Number(cleaned)));
-                }}
-                aria-invalid={!!errors.flete}
-              />
-              {errors.flete && <p className="text-xs text-destructive">{errors.flete}</p>}
-            </div>
-            {tipo === "efectivo" && (
+            {/* CONTRATO-2026-09-24-01 (punto 2): flete es "prohibido" (= 0)
+                para "interno" -- se oculta en vez de dejar tipear un valor
+                que el backend va a rechazar. */}
+            {permiteGastoYFlete(tipo) && (
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-muted-foreground">Flete ($)</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={flete}
+                  onChange={(e) => {
+                    const cleaned = sanitizeMoneyInput(e.target.value);
+                    setFlete(cleaned === "" ? "" : Math.max(0, Number(cleaned)));
+                  }}
+                  aria-invalid={!!errors.flete}
+                />
+                {errors.flete && <p className="text-xs text-destructive">{errors.flete}</p>}
+              </div>
+            )}
+            {permiteContrarreembolso(tipo) && (
               <div className="grid gap-1.5">
                 <Label className="text-xs text-muted-foreground">Monto a reembolsar</Label>
                 <Input
@@ -621,22 +666,35 @@ export function AltaIndividualView({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label className="text-xs text-muted-foreground">Dónde se paga el flete</Label>
+              {/* CONTRATO-2026-09-24-01 (punto 2): solo se ofrecen los
+                  lugarPago validos para el tipo elegido -- antes de este
+                  filtro se podia armar, por ejemplo, "trámite" + "destino",
+                  que el backend rechaza con 400 REGLA_DE_TIPO. */}
               <Select value={lugarPago} onValueChange={(v) => setLugarPago(v as LugarPagoApi)}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {LUGARES_PAGO.map((l) => (
-                    <SelectItem key={l.value} value={l.value}>
-                      {l.label}
-                    </SelectItem>
-                  ))}
+                  {LUGARES_PAGO.filter((l) => LUGARES_PAGO_POR_TIPO[tipo].includes(l.value)).map(
+                    (l) => (
+                      <SelectItem key={l.value} value={l.value}>
+                        {l.label}
+                      </SelectItem>
+                    )
+                  )}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-1.5">
               <Label className="text-xs text-muted-foreground">Forma de pago</Label>
-              <Select value={formaPago} onValueChange={(v) => setFormaPago(v as FormaPagoApi)}>
+              {/* "interno" va siempre por contado (CONTRATO-2026-09-24-01,
+                  punto 2) -- se deshabilita en vez de ocultarse para que
+                  quede claro por qué no hay nada para elegir. */}
+              <Select
+                value={formaPago}
+                onValueChange={(v) => setFormaPago(v as FormaPagoApi)}
+                disabled={!permiteElegirFormaPago(tipo)}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -655,38 +713,45 @@ export function AltaIndividualView({
               mantiene el nombre viejo del backend — en la práctica es el
               monto cobrado por billetera virtual/digital. */}
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="valor-declarado" className="text-xs text-muted-foreground">
-                Valor declarado ($, opcional)
-              </Label>
-              <Input
-                id="valor-declarado"
-                type="text"
-                inputMode="decimal"
-                placeholder="0"
-                value={valorDeclarado}
-                onChange={(e) => {
-                  const cleaned = sanitizeMoneyInput(e.target.value);
-                  setValorDeclarado(cleaned === "" ? "" : Math.max(0, Number(cleaned)));
-                }}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="gasto" className="text-xs text-muted-foreground">
-                Pago con billetera/digital ($, opcional)
-              </Label>
-              <Input
-                id="gasto"
-                type="text"
-                inputMode="decimal"
-                placeholder="0"
-                value={gasto}
-                onChange={(e) => {
-                  const cleaned = sanitizeMoneyInput(e.target.value);
-                  setGasto(cleaned === "" ? "" : Math.max(0, Number(cleaned)));
-                }}
-              />
-            </div>
+            {/* CONTRATO-2026-09-24-01 (punto 2): valor declarado solo vale
+                para "paqueteria" -- en efectivo lo que se declara es el
+                contrarreembolso, y en trámite/interno esta prohibido. */}
+            {permiteValorDeclarado(tipo) && (
+              <div className="grid gap-1.5">
+                <Label htmlFor="valor-declarado" className="text-xs text-muted-foreground">
+                  Valor declarado ($, opcional)
+                </Label>
+                <Input
+                  id="valor-declarado"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={valorDeclarado}
+                  onChange={(e) => {
+                    const cleaned = sanitizeMoneyInput(e.target.value);
+                    setValorDeclarado(cleaned === "" ? "" : Math.max(0, Number(cleaned)));
+                  }}
+                />
+              </div>
+            )}
+            {permiteGastoYFlete(tipo) && (
+              <div className="grid gap-1.5">
+                <Label htmlFor="gasto" className="text-xs text-muted-foreground">
+                  Pago con billetera/digital ($, opcional)
+                </Label>
+                <Input
+                  id="gasto"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={gasto}
+                  onChange={(e) => {
+                    const cleaned = sanitizeMoneyInput(e.target.value);
+                    setGasto(cleaned === "" ? "" : Math.max(0, Number(cleaned)));
+                  }}
+                />
+              </div>
+            )}
             <div className="grid gap-1.5">
               <Label htmlFor="observaciones" className="text-xs text-muted-foreground">
                 Observaciones / contenido (opcional)

@@ -47,6 +47,13 @@ import {
   TIPOS,
   LUGARES_PAGO,
   FORMAS_PAGO,
+  LUGARES_PAGO_POR_TIPO,
+  lugarPagoValido,
+  lugarPagoPorDefecto,
+  permiteContrarreembolso,
+  permiteValorDeclarado,
+  permiteGastoYFlete,
+  permiteElegirFormaPago,
   emptyOrigen,
   guiaDeEnvio,
   filaEnBlanco,
@@ -191,14 +198,19 @@ export function CargaRapidaView({
           domicilioId: fila.destino.domicilioId,
         },
         cantidadBultos: fila.bultos,
-        fleteImporte: fila.flete === "" ? 0 : Number(fila.flete),
+        fleteImporte: permiteGastoYFlete(fila.tipo) ? (fila.flete === "" ? 0 : Number(fila.flete)) : 0,
         tipo: fila.tipo,
         lugarPago: fila.lugarPago,
-        formaPago: fila.formaPago,
-        contrarreembolsoImporte: fila.tipo === "efectivo" ? Number(fila.montoCrr) : undefined,
+        formaPago: permiteElegirFormaPago(fila.tipo) ? fila.formaPago : "contado",
+        contrarreembolsoImporte: permiteContrarreembolso(fila.tipo)
+          ? Number(fila.montoCrr)
+          : undefined,
         remitoManualNumero: fila.remitoManual.trim() || undefined,
-        valorDeclarado: fila.valorDeclarado === "" ? undefined : Number(fila.valorDeclarado),
-        gasto: fila.gasto === "" ? undefined : Number(fila.gasto),
+        valorDeclarado:
+          permiteValorDeclarado(fila.tipo) && fila.valorDeclarado !== ""
+            ? Number(fila.valorDeclarado)
+            : undefined,
+        gasto: permiteGastoYFlete(fila.tipo) && fila.gasto !== "" ? Number(fila.gasto) : undefined,
         observaciones: fila.observaciones.trim() || undefined,
       };
 
@@ -207,7 +219,10 @@ export function CargaRapidaView({
         : await crearEnvioAction(datosComunes as CrearEnvioInput);
 
       if (!resultado.ok) {
-        const msg = resultado.title || resultado.message;
+        const msg =
+          resultado.code === "REGLA_DE_TIPO"
+            ? resultado.message
+            : resultado.title || resultado.message;
         actualizarFila(id, { status: "error", errorMsg: msg });
         toast.error(msg);
         return;
@@ -793,9 +808,30 @@ export function CargaRapidaView({
                       <Select
                         disabled={guardando}
                         value={fila.tipo}
-                        onValueChange={(v) =>
-                          actualizarFila(fila.id, { tipo: v as TipoEnvioApi })
-                        }
+                        onValueChange={(v) => {
+                          // CONTRATO-2026-09-24-01 (punto 2, Sebastian): al
+                          // cambiar el tipo de una fila hay que ajustar todo
+                          // lo que dejo de valer para el tipo nuevo -- si no,
+                          // el default viejo ("destino") manda un 400
+                          // REGLA_DE_TIPO apenas se guarda un trámite o un
+                          // interno. Ojo: cada fila nueva hereda tipo/lugar/
+                          // forma de la anterior (filaEnBlanco en
+                          // nueva-view.helpers.ts), así que sin este ajuste
+                          // el error se hubiera propagado a todo el lote.
+                          const nuevoTipo = v as TipoEnvioApi;
+                          const patch: Partial<FilaDestino> = { tipo: nuevoTipo };
+                          if (!lugarPagoValido(nuevoTipo, fila.lugarPago)) {
+                            patch.lugarPago = lugarPagoPorDefecto(nuevoTipo);
+                          }
+                          if (!permiteElegirFormaPago(nuevoTipo)) patch.formaPago = "contado";
+                          if (!permiteContrarreembolso(nuevoTipo)) patch.montoCrr = "";
+                          if (!permiteValorDeclarado(nuevoTipo)) patch.valorDeclarado = "";
+                          if (!permiteGastoYFlete(nuevoTipo)) {
+                            patch.flete = "";
+                            patch.gasto = "";
+                          }
+                          actualizarFila(fila.id, patch);
+                        }}
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue />
@@ -809,27 +845,33 @@ export function CargaRapidaView({
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid gap-1.5">
-                      <Label className="text-xs text-muted-foreground">Flete ($)</Label>
-                      <Input
-                        disabled={guardando}
-                        type="text"
-                        inputMode="decimal"
-                        value={fila.flete}
-                        onChange={(e) => {
-                          const cleaned = sanitizeMoneyInput(e.target.value);
-                          actualizarFila(fila.id, {
-                            flete: cleaned === "" ? "" : Math.max(0, Number(cleaned)),
-                          });
-                        }}
-                        aria-invalid={!!fila.errores.flete}
-                      />
-                      {fila.errores.flete && (
-                        <p className="text-xs text-destructive">{fila.errores.flete}</p>
-                      )}
-                    </div>
+                    {/* CONTRATO-2026-09-24-01 (punto 2): flete es
+                        "prohibido" (= 0) para "interno". */}
+                    {permiteGastoYFlete(fila.tipo) && (
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs text-muted-foreground">Flete ($)</Label>
+                        <Input
+                          disabled={guardando}
+                          type="text"
+                          inputMode="decimal"
+                          value={fila.flete}
+                          onChange={(e) => {
+                            const cleaned = sanitizeMoneyInput(e.target.value);
+                            actualizarFila(fila.id, {
+                              flete: cleaned === "" ? "" : Math.max(0, Number(cleaned)),
+                            });
+                          }}
+                          aria-invalid={!!fila.errores.flete}
+                        />
+                        {fila.errores.flete && (
+                          <p className="text-xs text-destructive">{fila.errores.flete}</p>
+                        )}
+                      </div>
+                    )}
                     <div className="grid gap-1.5">
                       <Label className="text-xs text-muted-foreground">Se paga en</Label>
+                      {/* Solo se ofrecen los lugarPago validos para el tipo
+                          de esta fila (CONTRATO-2026-09-24-01, punto 2). */}
                       <Select
                         disabled={guardando}
                         value={fila.lugarPago}
@@ -841,7 +883,9 @@ export function CargaRapidaView({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {LUGARES_PAGO.map((l) => (
+                          {LUGARES_PAGO.filter((l) =>
+                            LUGARES_PAGO_POR_TIPO[fila.tipo].includes(l.value)
+                          ).map((l) => (
                             <SelectItem key={l.value} value={l.value}>
                               {l.label}
                             </SelectItem>
@@ -851,8 +895,10 @@ export function CargaRapidaView({
                     </div>
                     <div className="grid gap-1.5">
                       <Label className="text-xs text-muted-foreground">Forma de pago</Label>
+                      {/* "interno" va siempre por contado
+                          (CONTRATO-2026-09-24-01, punto 2). */}
                       <Select
-                        disabled={guardando}
+                        disabled={guardando || !permiteElegirFormaPago(fila.tipo)}
                         value={fila.formaPago}
                         onValueChange={(v) =>
                           actualizarFila(fila.id, { formaPago: v as FormaPagoApi })
@@ -891,7 +937,7 @@ export function CargaRapidaView({
                     </div>
                   </div>
 
-                  {fila.tipo === "efectivo" && (
+                  {permiteContrarreembolso(fila.tipo) && (
                     <div className="grid gap-1.5 sm:w-1/3">
                       <Label className="text-xs text-muted-foreground">
                         Monto a reembolsar
@@ -920,40 +966,47 @@ export function CargaRapidaView({
                       Más datos (opcional)
                     </summary>
                     <div className="mt-2 grid gap-3 sm:grid-cols-3">
-                      <div className="grid gap-1.5">
-                        <Label className="text-xs text-muted-foreground">
-                          Valor declarado ($)
-                        </Label>
-                        <Input
-                          disabled={guardando}
-                          type="text"
-                          inputMode="decimal"
-                          value={fila.valorDeclarado}
-                          onChange={(e) => {
-                            const cleaned = sanitizeMoneyInput(e.target.value);
-                            actualizarFila(fila.id, {
-                              valorDeclarado: cleaned === "" ? "" : Math.max(0, Number(cleaned)),
-                            });
-                          }}
-                        />
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label className="text-xs text-muted-foreground">
-                          Pago billetera/digital ($)
-                        </Label>
-                        <Input
-                          disabled={guardando}
-                          type="text"
-                          inputMode="decimal"
-                          value={fila.gasto}
-                          onChange={(e) => {
-                            const cleaned = sanitizeMoneyInput(e.target.value);
-                            actualizarFila(fila.id, {
-                              gasto: cleaned === "" ? "" : Math.max(0, Number(cleaned)),
-                            });
-                          }}
-                        />
-                      </div>
+                      {/* CONTRATO-2026-09-24-01 (punto 2): valor declarado
+                          solo vale para "paqueteria". */}
+                      {permiteValorDeclarado(fila.tipo) && (
+                        <div className="grid gap-1.5">
+                          <Label className="text-xs text-muted-foreground">
+                            Valor declarado ($)
+                          </Label>
+                          <Input
+                            disabled={guardando}
+                            type="text"
+                            inputMode="decimal"
+                            value={fila.valorDeclarado}
+                            onChange={(e) => {
+                              const cleaned = sanitizeMoneyInput(e.target.value);
+                              actualizarFila(fila.id, {
+                                valorDeclarado: cleaned === "" ? "" : Math.max(0, Number(cleaned)),
+                              });
+                            }}
+                          />
+                        </div>
+                      )}
+                      {/* gasto es "prohibido" (= 0) para "interno". */}
+                      {permiteGastoYFlete(fila.tipo) && (
+                        <div className="grid gap-1.5">
+                          <Label className="text-xs text-muted-foreground">
+                            Pago billetera/digital ($)
+                          </Label>
+                          <Input
+                            disabled={guardando}
+                            type="text"
+                            inputMode="decimal"
+                            value={fila.gasto}
+                            onChange={(e) => {
+                              const cleaned = sanitizeMoneyInput(e.target.value);
+                              actualizarFila(fila.id, {
+                                gasto: cleaned === "" ? "" : Math.max(0, Number(cleaned)),
+                              });
+                            }}
+                          />
+                        </div>
+                      )}
                       <div className="grid gap-1.5">
                         <Label className="text-xs text-muted-foreground">
                           Observaciones / contenido

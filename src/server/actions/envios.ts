@@ -68,14 +68,22 @@ export async function crearEnvioAction(
 export async function actualizarEnvioAction(
   id: string,
   data: ActualizarEnvioInput
-): Promise<{ ok: true; envio: Awaited<ReturnType<typeof enviosService.actualizarEnvio>> } | { ok: false; title: string; message: string }> {
+): Promise<
+  | { ok: true; envio: Awaited<ReturnType<typeof enviosService.actualizarEnvio>> }
+  | { ok: false; code: string; title: string; message: string }
+> {
   try {
     const item = await enviosService.actualizarEnvio(id, data);
     revalidateAll();
     return { ok: true, envio: item };
   } catch (err) {
     if (err instanceof ApiError) {
-      return { ok: false, title: err.title, message: err.message };
+      // CONTRATO-2026-09-24-01 (punto 3, Sebastian): esta accion no
+      // propagaba `code` -- sin el, la UI (carga-rapida-view.tsx, "Editar")
+      // no podia distinguir un 400 REGLA_DE_TIPO (donde hay que mostrar
+      // err.message, el detail real) de cualquier otro rechazo (donde
+      // err.title sigue siendo lo que se muestra).
+      return { ok: false, code: err.code, title: err.title, message: err.message };
     }
     throw err;
   }

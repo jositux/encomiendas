@@ -31,12 +31,23 @@ import { nombreClienteSchema, telefonoClienteSchema, sanitizeTelefonoInput } fro
 // NOTA-2026-09-22-01: alta rápida de cliente desde los bloques de
 // remitente/destinatario de Nueva Encomienda (modo individual). A
 // diferencia de ClienteFormDialog (alta/edición completa, pantalla de
-// Clientes), este formulario pide sólo los 5 campos que la API exige más
-// la marca de cuenta corriente — documento/email/piso/referencia/número
-// quedan fuera a propósito (se completan después desde /clientes) y
-// sectorId no se manda: sin él, el backend resuelve el sector
-// predeterminado de la localidad (createCliente ya lo trata como
-// opcional).
+// Clientes), este formulario pide sólo los campos que la API exige más la
+// marca de cuenta corriente — documento/email/piso/referencia quedan
+// fuera a propósito (se completan después desde /clientes) y sectorId no
+// se manda: sin él, el backend resuelve el sector predeterminado de la
+// localidad (createCliente ya lo trata como opcional).
+//
+// NOTA-2026-09-23-05 (Sebastian): tres correcciones sobre la versión
+// original de este modal. (1) El rótulo del nombre para persona física
+// dice "Apellido y nombres", igual que ClienteFormDialog — es sólo el
+// rótulo, el backend sigue guardando un único campo `nombre` de texto
+// libre. (2) El campo `numero` de la calle SÍ se pide acá (antes había
+// quedado afuera): es opcional y de texto libre en el contrato
+// (POST /clientes admite "1450 bis", "S/N", no sólo dígitos), así que no
+// lleva sanitización numérica. (3) Al crear el cliente (o elegir uno
+// existente) desde el bloque de origen, el foco pasa solo al campo de
+// destino de Nueva Encomienda — ver `focoDestino`/`autoFocus` en
+// nueva-view.tsx y alta-individual-view.tsx.
 //
 // El campo nombre reutiliza ClienteSearchInput en vez de un <Input> común:
 // es la misma búsqueda contra GET /clientes?q= que pide el NOTA ("antes de
@@ -49,6 +60,7 @@ type Draft = {
   nombre: string;
   telefono: string;
   calle: string;
+  numero: string;
   localidadId: string;
   esCuentaCorriente: boolean;
 };
@@ -64,6 +76,7 @@ function draftInicial(
     nombre,
     telefono: sanitizeTelefonoInput(telefono),
     calle,
+    numero: "",
     localidadId,
     esCuentaCorriente: false,
   };
@@ -135,6 +148,7 @@ export function ClienteAltaRapidaDialog({
         esCuentaCorriente: draft.esCuentaCorriente,
         localidadId: draft.localidadId,
         calle: draft.calle.trim(),
+        numero: draft.numero.trim() || undefined,
       });
       if (!resultado.ok) {
         toast.error(resultado.title, { description: resultado.message });
@@ -162,7 +176,7 @@ export function ClienteAltaRapidaDialog({
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid gap-1.5">
             <Label htmlFor="alta-rapida-nombre">
-              {draft.tipo === "empresa" ? "Razón social" : "Nombre"}
+              {draft.tipo === "empresa" ? "Razón social" : "Apellido y nombres"}
             </Label>
             <ClienteSearchInput
               id="alta-rapida-nombre"
@@ -205,15 +219,26 @@ export function ClienteAltaRapidaDialog({
             </div>
           </div>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="alta-rapida-calle">Calle</Label>
-            <Input
-              id="alta-rapida-calle"
-              value={draft.calle}
-              onChange={(e) => setDraft({ ...draft, calle: e.target.value })}
-              aria-invalid={!!errors.calle}
-            />
-            {errors.calle && <p className="text-xs text-destructive">{errors.calle}</p>}
+          <div className="grid grid-cols-[2fr_1fr] gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="alta-rapida-calle">Calle</Label>
+              <Input
+                id="alta-rapida-calle"
+                value={draft.calle}
+                onChange={(e) => setDraft({ ...draft, calle: e.target.value })}
+                aria-invalid={!!errors.calle}
+              />
+              {errors.calle && <p className="text-xs text-destructive">{errors.calle}</p>}
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="alta-rapida-numero">Número</Label>
+              <Input
+                id="alta-rapida-numero"
+                value={draft.numero}
+                onChange={(e) => setDraft({ ...draft, numero: e.target.value })}
+                placeholder="1450 bis, S/N…"
+              />
+            </div>
           </div>
 
           <div className="grid gap-1.5">

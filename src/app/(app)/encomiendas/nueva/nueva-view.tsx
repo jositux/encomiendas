@@ -51,6 +51,14 @@ export function NuevaEncomiendaView({
   const [destino, setDestino] = React.useState<DestinoState>(() =>
     emptyDestino(localidades, sectores)
   );
+  // NOTA-2026-09-23-05 (punto 3, Sebastian): al crear/elegir el remitente
+  // por el modal de alta rápida, el foco pasa solo al campo de destino --
+  // es el paso siguiente real del mostrador. Token numérico (no boolean)
+  // para poder re-disparar el foco cada vez que se cierra el modal desde
+  // el bloque de origen, incluso si ya se había disparado antes en esta
+  // misma pantalla (ver el comentario de `autoFocus` en
+  // cliente-search-input.tsx).
+  const [focoDestino, setFocoDestino] = React.useState(0);
 
   // NOTA-2026-09-22-01: el cliente creado o elegido en el modal de alta
   // rápida se asocia al bloque que lo abrió — mismo shape que
@@ -69,6 +77,7 @@ export function NuevaEncomiendaView({
         referencia: cliente.referencia ?? "",
         localidadId: cliente.localidadId ?? origen.localidadId,
       });
+      if (modo === "individual") setFocoDestino((t) => t + 1);
     } else if (altaRapidaBloque === "destino") {
       setDestino({
         nombre: cliente.nombre,
@@ -138,6 +147,7 @@ export function NuevaEncomiendaView({
             session={session}
             localidades={localidades}
             sectores={sectores}
+            focoDestino={focoDestino}
           />
         ) : (
           <CargaRapidaView
