@@ -6,6 +6,7 @@ import { formatCurrency } from "@/lib/format";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { ClienteAltaRapidaDialog } from "@/components/clientes/cliente-alta-rapida-dialog";
+import { CopyButton } from "@/components/shared/copy-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { EnvioApi } from "@/server/services/envios";
 import type { SectorApi } from "@/server/services/sectores";
@@ -165,7 +166,10 @@ export function NuevaEncomiendaView({
               {cargados.slice(0, 12).map((e) => (
                 <div key={e.id} className="rounded-lg border p-3 text-sm">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono font-semibold">#{guiaDeEnvio(e)}</span>
+                    <span className="flex items-center gap-1 font-mono font-semibold">
+                      #{guiaDeEnvio(e)}
+                      <CopyButton value={guiaDeEnvio(e)} label="Número" />
+                    </span>
                     {e.estadoActual && (
                       <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
                         {e.estadoActual}
@@ -173,8 +177,9 @@ export function NuevaEncomiendaView({
                     )}
                   </div>
                   {e.remitoManualNumero && (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
                       N° de sistema: <span className="font-mono">{e.numero}</span>
+                      <CopyButton value={e.numero} label="Número de sistema" />
                     </p>
                   )}
                   <p className="mt-1.5 truncate text-xs text-muted-foreground">

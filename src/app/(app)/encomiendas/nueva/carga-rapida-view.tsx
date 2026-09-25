@@ -102,8 +102,15 @@ export function CargaRapidaView({
     [localidades]
   );
 
+  // NOTA-2026-09-23-05: id de la fila que debe recibir el foco apenas se
+  // monta — la que se acaba de agregar a mano, o la que se agrega sola
+  // después de completar una alta (ver guardarFila).
+  const [focoFilaId, setFocoFilaId] = React.useState<string | null>(null);
+
   function agregarDestino() {
-    setFilas((prev) => [...prev, filaEnBlanco(localidades, sectores, prev[prev.length - 1])]);
+    const nueva = filaEnBlanco(localidades, sectores, filas[filas.length - 1]);
+    setFilas((prev) => [...prev, nueva]);
+    setFocoFilaId(nueva.id);
   }
 
   function duplicarDestino(id: string) {
@@ -215,6 +222,16 @@ export function CargaRapidaView({
         toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} cargada correctamente`);
       }
       actualizarFila(id, { status: "ok", resultado: resultado.envio, errorMsg: undefined });
+      // NOTA-2026-09-23-05: si esta era la última fila pendiente, se agrega
+      // sola la próxima y el foco vuelve al campo "Destino" — el operador
+      // sigue tipeando el siguiente destino sin clickear "Agregar destino"
+      // ni volver a hacer click en el campo.
+      if (!esEdicion) {
+        const esUltima = filas[filas.length - 1]?.id === id;
+        if (esUltima) {
+          agregarDestino();
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "No se pudo cargar este destino.";
       actualizarFila(id, { status: "error", errorMsg: msg });
@@ -628,6 +645,7 @@ export function CargaRapidaView({
                       <ClienteSearchInput
                         disabled={guardando}
                         value={fila.destino.nombre}
+                        autoFocus={fila.id === focoFilaId}
                         onChange={(v) =>
                           actualizarFila(fila.id, {
                             destino: {

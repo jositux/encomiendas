@@ -4,6 +4,7 @@ import * as React from "react";
 import { Printer } from "lucide-react";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/shared/copy-button";
 import type { PlanillaApi } from "@/server/services/custodia";
 
 // Vista de impresión de una planilla (Feature A, sección 32 del plan de
@@ -43,6 +44,10 @@ function PlanillaQr({ value }: { value: string }) {
   );
 }
 
+function totalBultos(envios: PlanillaApi["envios"]): number {
+  return envios.reduce((acc, e) => acc + e.cantidadBultos, 0);
+}
+
 export function PlanillaPrintView({ planilla }: { planilla: PlanillaApi }) {
   return (
     <div className="mx-auto max-w-2xl p-4 print:max-w-none print:p-0">
@@ -64,8 +69,9 @@ export function PlanillaPrintView({ planilla }: { planilla: PlanillaApi }) {
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground print:text-black">
               Planilla
             </p>
-            <p className="text-4xl font-bold tracking-wide print:text-black">
+            <p className="flex items-center gap-1.5 text-4xl font-bold tracking-wide print:text-black">
               {planilla.codigoCorto}
+              <CopyButton value={planilla.codigoCorto} label="Código de planilla" />
             </p>
           </div>
           <span className="rounded border px-2 py-0.5 text-xs font-medium print:border-black">
@@ -75,8 +81,9 @@ export function PlanillaPrintView({ planilla }: { planilla: PlanillaApi }) {
 
         <div className="flex flex-col items-center gap-2">
           <PlanillaQr value={planilla.codigoQr} />
-          <p className="break-all text-center font-mono text-xs text-muted-foreground print:text-black">
+          <p className="flex items-center justify-center gap-1 break-all text-center font-mono text-xs text-muted-foreground print:text-black">
             {planilla.codigoQr}
+            <CopyButton value={planilla.codigoQr} label="Código QR" />
           </p>
         </div>
 
@@ -91,14 +98,25 @@ export function PlanillaPrintView({ planilla }: { planilla: PlanillaApi }) {
         </div>
 
         <div className="border-t pt-3 print:border-black">
+          {/* NOTA-2026-09-23-03 (pedido de Sebastian): total de bultos junto
+              a la cantidad de envíos — un envío puede traer más de un
+              bulto, así que "12 envíos" solo no le alcanza al chofer/
+              depósito para cuadrar lo que sube al camión. */}
           <p className="mb-2 text-xs font-medium text-muted-foreground print:text-black">
-            {planilla.envios.length} envío{planilla.envios.length === 1 ? "" : "s"}
+            {planilla.envios.length} envío{planilla.envios.length === 1 ? "" : "s"} ·{" "}
+            {totalBultos(planilla.envios)} bulto{totalBultos(planilla.envios) === 1 ? "" : "s"}
           </p>
           <ul className="flex flex-col gap-1 text-xs print:text-black">
             {planilla.envios.map((e) => (
-              <li key={e.id} className="flex justify-between gap-2 border-b border-dashed pb-1">
-                <span className="font-mono">#{e.numero}</span>
+              <li key={e.id} className="flex items-center justify-between gap-2 border-b border-dashed pb-1">
+                <span className="flex items-center gap-1 font-mono">
+                  #{e.numero}
+                  <CopyButton value={e.numero} label="Número de envío" />
+                </span>
                 <span className="truncate">{e.destinatarioNombre}</span>
+                <span className="shrink-0 text-muted-foreground">
+                  {e.cantidadBultos} bulto{e.cantidadBultos === 1 ? "" : "s"}
+                </span>
               </li>
             ))}
           </ul>

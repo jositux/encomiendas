@@ -3,6 +3,7 @@
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Barcode39 } from "@/components/shared/barcode39";
+import { CopyButton } from "@/components/shared/copy-button";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import type { RemitoApi } from "@/server/services/envios";
 
@@ -91,12 +92,18 @@ function Panel({
           código de barras abajo en su propia fila, con un alto fijo chico y
           ancho acotado para que entre cómodo dentro de la columna. */}
       <div className="flex flex-col gap-1.5">
-        <p className="whitespace-nowrap font-mono text-lg font-semibold">
+        <p className="flex items-center gap-1 whitespace-nowrap font-mono text-lg font-semibold">
           #{remito.numero}
+          <CopyButton value={remito.numero} label="Número de envío" />
         </p>
-        <p className="text-xs text-muted-foreground print:text-black">
-          Guía {remito.guiaDiaria}
-          {remito.remitoManualNumero ? ` · Remito manual ${remito.remitoManualNumero}` : ""}
+        <p className="flex items-center gap-1 text-xs text-muted-foreground print:text-black">
+          <span>
+            Guía {remito.guiaDiaria}
+            {remito.remitoManualNumero ? ` · Remito manual ${remito.remitoManualNumero}` : ""}
+          </span>
+          {remito.remitoManualNumero && (
+            <CopyButton value={remito.remitoManualNumero} label="Remito manual" />
+          )}
         </p>
         <p className="text-xs text-muted-foreground print:text-black">
           {formatDateTime(remito.fechaAlta)}

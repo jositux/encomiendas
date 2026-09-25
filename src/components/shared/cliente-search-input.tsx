@@ -35,6 +35,12 @@ export function ClienteSearchInput({
   placeholder,
   disabled,
   ariaInvalid,
+  // NOTA-2026-09-23-05 (pedido de Sebastian): en Carga Rápida, al terminar
+  // de cargar un destino el foco tiene que volver solo al campo de
+  // "Destino" de la fila siguiente — sin esto, el operador tiene que
+  // clickear a mano en cada fila nueva, que es justo el paso que Carga
+  // Rápida existe para evitar.
+  autoFocus,
 }: {
   id?: string;
   value: string;
@@ -43,6 +49,7 @@ export function ClienteSearchInput({
   placeholder?: string;
   disabled?: boolean;
   ariaInvalid?: boolean;
+  autoFocus?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const [results, setResults] = React.useState<ClienteApi[]>([]);
@@ -51,6 +58,12 @@ export function ClienteSearchInput({
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const resultRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+
+  React.useEffect(() => {
+    if (autoFocus) {
+      inputRef.current?.focus();
+    }
+  }, [autoFocus]);
   // Al elegir un resultado, el onSelectCliente del padre cambia `value` (por
   // ejemplo a c.nombre) — ese cambio no debe disparar una nueva búsqueda.
   const skipNextSearch = React.useRef(false);
