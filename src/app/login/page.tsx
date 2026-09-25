@@ -30,12 +30,15 @@ export default function LoginPage() {
       setError(result.error ?? "No se pudo iniciar sesión.");
       return;
     }
-    // NOTA-2026-09-23-06: el aterrizaje directo pasó a ser "Nueva
-    // encomienda" (antes "/", la vieja pantalla de inicio con accesos
-    // rápidos) — decisión del humano del backend, "por el momento", es el
-    // único flujo que se está probando ahora. Mismo destino que proxy.ts
-    // usa cuando una sesión ya logueada entra a /login.
-    router.replace("/encomiendas/nueva");
+    // NOTA-2026-09-23-06: el aterrizaje directo por default sigue siendo
+    // "Nueva encomienda" (antes "/", la vieja pantalla de inicio con
+    // accesos rápidos) — decisión del humano del backend, "por el
+    // momento", es el único flujo que se está probando ahora. NOTA-2026-
+    // 09-24-01 (aprobado en #cc-relay-humanos) agrega una excepción por
+    // rol: un usuario con permiso de chofer (`landingPathParaPermisos` en
+    // login()) aterriza directo en /chofer. Mismo destino que proxy.ts usa
+    // cuando una sesión ya logueada entra a /login.
+    router.replace(result.landingPath ?? "/encomiendas/nueva");
     router.refresh();
   }
 

@@ -3,6 +3,8 @@
 import { cookies } from "next/headers";
 import { apiFetch, ApiError } from "./api-client";
 import { SESSION_COOKIE } from "./session";
+import { landingPathParaPermisos } from "@/lib/landing";
+import type { SesionUsuario } from "@/types";
 
 const SIETE_DIAS = 60 * 60 * 24 * 7;
 
@@ -13,7 +15,7 @@ const MENSAJES_ERROR: Record<string, string> = {
 export async function login(
   usuario: string,
   password: string
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; landingPath?: string }> {
   if (!usuario.trim() || !password.trim()) {
     return { ok: false, error: "Ingresá usuario y contraseña." };
   }
@@ -43,7 +45,20 @@ export async function login(
     maxAge: SIETE_DIAS,
   });
 
-  return { ok: true };
+  // NOTA-2026-09-24-01: landing por rol. Reusamos el token que ya tenemos
+  // (sin depender de la cookie recien seteada) para consultar la sesion y
+  // decidir a donde aterriza. Si esto falla por lo que sea, no rompemos el
+  // login -- landingPath queda en el default de siempre ("Nueva
+  // encomienda", NOTA-2026-09-23-06).
+  let landingPath = "/encomiendas/nueva";
+  try {
+    const sesion = await apiFetch<SesionUsuario>("/auth/yo", { token });
+    landingPath = landingPathParaPermisos(sesion.permisos);
+  } catch (err) {
+    console.error("No se pudo resolver el landing por rol, uso el default:", err);
+  }
+
+  return { ok: true, landingPath };
 }
 
 export async function logout(): Promise<void> {
