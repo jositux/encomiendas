@@ -25,7 +25,12 @@ const FORMA_LABEL: Record<string, string> = {
   cuenta_corriente: "Cuenta corriente",
 };
 
-function money(value: string) {
+function money(value: string | null) {
+  // CONTRATO-2026-09-24-01 (punto 4, Sebastian): importes en null son un
+  // renglon en blanco en el papel, no "$ 0" -- Number(null) da 0 y lo
+  // confundia con un importe real (p.ej. los tres importes de un envio
+  // "interno" vienen null).
+  if (value === null) return "";
   return formatCurrency(Number(value));
 }
 
@@ -157,11 +162,13 @@ function Panel({
           <span className="text-muted-foreground print:text-black">Bultos: </span>
           {remito.cantidadBultos}
         </p>
-        <p>
-          <span className="text-muted-foreground print:text-black">Pago: </span>
-          {LUGAR_LABEL[remito.pagoServicio.lugar] ?? remito.pagoServicio.lugar} ·{" "}
-          {FORMA_LABEL[remito.pagoServicio.forma] ?? remito.pagoServicio.forma}
-        </p>
+        {remito.pagoServicio && (
+          <p>
+            <span className="text-muted-foreground print:text-black">Pago: </span>
+            {LUGAR_LABEL[remito.pagoServicio.lugar] ?? remito.pagoServicio.lugar} ·{" "}
+            {FORMA_LABEL[remito.pagoServicio.forma] ?? remito.pagoServicio.forma}
+          </p>
+        )}
         <p>
           <span className="text-muted-foreground print:text-black">Levantó: </span>
           {remito.levanto}
@@ -201,12 +208,14 @@ function Panel({
         </p>
       </div>
 
-      {/* NOTA-2026-09-24: en un envio contra reembolso, importes.aCobrar
-          viene en 0 desde el backend (no calza con total) -- pero la plata
-          que el chofer tiene que cobrar en destino es justamente el total
-          del contra reembolso. Mostrar 0 ahi confunde al chofer, asi que
-          mientras el backend no lo corrija, en este caso mostramos el mismo
-          valor que Total. */}
+      {/* CONTRATO-2026-09-24-01 / BUG-2026-09-24-02: hasta el 2026-09-24
+          esto mostraba `total` en vez de `aCobrar` cuando habia contra
+          reembolso, porque el backend viejo mandaba aCobrar en 0 en ese
+          caso. Con la formula nueva del backend (2026-09-24, commit
+          5492bd6) importes.aCobrar YA trae el contrarreembolso sumado --
+          ese parche quedo redundante (coincidia con el valor correcto de
+          casualidad) y ademas enmascaraba el campo real. Se saca en el
+          mismo deploy que el resto de los ajustes de este contrato. */}
       <div className="grid grid-cols-3 gap-2 border-t pt-2 text-center print:border-black">
         <div>
           <p className="text-xs text-muted-foreground print:text-black">Cobrado</p>
@@ -214,13 +223,7 @@ function Panel({
         </div>
         <div>
           <p className="text-xs text-muted-foreground print:text-black">A cobrar</p>
-          <p className="font-semibold">
-            {money(
-              remito.contrarreembolso !== null
-                ? remito.importes.total
-                : remito.importes.aCobrar
-            )}
-          </p>
+          <p className="font-semibold">{money(remito.importes.aCobrar)}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground print:text-black">Total</p>

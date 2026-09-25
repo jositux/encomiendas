@@ -38,7 +38,6 @@ import {
   sanitizeTelefonoInput,
   sanitizeDocumentoInput,
   sanitizeEmailInput,
-  sanitizeIntegerInput,
 } from "@/lib/validation";
 
 // El backend real no tiene un solo domicilio-string por cliente: tiene un
@@ -114,7 +113,10 @@ function draftFromCliente(cliente: ClienteApi, sectores: SectorApi[]): Draft {
     email: cliente.email ?? "",
     esCuentaCorriente: cliente.esCuentaCorriente,
     calle: cliente.calle,
-    numero: sanitizeIntegerInput(cliente.numero ?? ""),
+    // NOTA-2026-09-23-05: numero es texto libre en el contrato ("1450
+    // bis", "S/N"), no un entero -- sanitizeIntegerInput le sacaba las
+    // letras y corrompia estos valores al entrar a edicion.
+    numero: cliente.numero ?? "",
     piso: cliente.piso ?? "",
     referencia: cliente.referencia ?? "",
     localidadId: cliente.localidadId,
@@ -325,7 +327,8 @@ export function ClienteFormDialog({
               <Input
                 id="numero"
                 value={draft.numero}
-                onChange={(e) => setDraft({ ...draft, numero: sanitizeIntegerInput(e.target.value) })}
+                onChange={(e) => setDraft({ ...draft, numero: e.target.value })}
+                placeholder="1450 bis, S/N…"
               />
             </div>
             <div className="grid gap-1.5">

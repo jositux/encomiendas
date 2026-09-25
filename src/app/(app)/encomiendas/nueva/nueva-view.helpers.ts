@@ -37,6 +37,57 @@ export const FORMAS_PAGO: { value: FormaPagoApi; label: string }[] = [
   { value: "cuenta_corriente", label: "Cuenta corriente" },
 ];
 
+// CONTRATO-2026-09-24-01 (Sebastian, 2026-09-24): reglas del formulario
+// legacy por tipo de envio -- que lugarPago vale, si el contrarreembolso/
+// valorDeclarado estan permitidos, y si flete/gasto/formaPago quedan fijos
+// en "interno". Antes el front dejaba armar cualquier combinacion y el
+// backend recien la rechazaba con 400 REGLA_DE_TIPO al guardar -- peor,
+// con el default de lugarPago en "destino", CUALQUIER alta de tipo
+// "tramite" o "interno" con los valores por defecto daba 400. Filtramos la
+// UI para que la combinacion invalida no se pueda ni armar. "prohibido" en
+// el contrato = ausente, null o 0.
+export const LUGARES_PAGO_POR_TIPO: Record<TipoEnvioApi, LugarPagoApi[]> = {
+  // El primer valor de cada lista es el default al elegir ese tipo (o al
+  // cambiar a un tipo donde el lugarPago actual ya no es valido).
+  efectivo: ["destino", "origen", "regreso"],
+  paqueteria: ["destino", "origen"],
+  tramite: ["origen", "regreso"],
+  interno: ["origen"],
+};
+
+export function lugarPagoValido(tipo: TipoEnvioApi, lugarPago: LugarPagoApi): boolean {
+  return LUGARES_PAGO_POR_TIPO[tipo].includes(lugarPago);
+}
+
+export function lugarPagoPorDefecto(tipo: TipoEnvioApi): LugarPagoApi {
+  return LUGARES_PAGO_POR_TIPO[tipo][0];
+}
+
+// contrarreembolsoImporte: obligatorio (>0) solo en "efectivo", prohibido
+// en el resto.
+export function permiteContrarreembolso(tipo: TipoEnvioApi): boolean {
+  return tipo === "efectivo";
+}
+
+// valorDeclarado: opcional solo en "paqueteria", prohibido en el resto
+// (incluido "efectivo" -- ahí lo que se declara es el contrarreembolso).
+export function permiteValorDeclarado(tipo: TipoEnvioApi): boolean {
+  return tipo === "paqueteria";
+}
+
+// flete y gasto: opcionales (>=0) en efectivo/paqueteria/tramite; en
+// "interno" tienen que ser 0 -- se ocultan en vez de mostrar el campo y
+// dejar que el operador tipee un valor que después se rechaza.
+export function permiteGastoYFlete(tipo: TipoEnvioApi): boolean {
+  return tipo !== "interno";
+}
+
+// formaPago: libre en efectivo/paqueteria/tramite; "interno" va siempre
+// por contado.
+export function permiteElegirFormaPago(tipo: TipoEnvioApi): boolean {
+  return tipo !== "interno";
+}
+
 export interface OrigenState {
   nombre: string;
   telefono: string;
@@ -194,7 +245,7 @@ export function validarFila(f: FilaDestino): Record<string, string> {
   if (!bultosCheck.success) next.bultos = bultosCheck.error.issues[0].message;
   const fleteCheck = montoNoNegativoSchema.safeParse(f.flete === "" ? 0 : f.flete);
   if (!fleteCheck.success) next.flete = fleteCheck.error.issues[0].message;
-  if (f.tipo === "efectivo") {
+  if (permiteContrarreembolso(f.tipo)) {
     const montoCheck = montoPositivoSchema.safeParse(f.montoCrr === "" ? 0 : f.montoCrr);
     if (!montoCheck.success) next.montoCrr = montoCheck.error.issues[0].message;
   }

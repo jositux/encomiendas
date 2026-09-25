@@ -35,11 +35,19 @@ export function ClienteSearchInput({
   placeholder,
   disabled,
   ariaInvalid,
-  // NOTA-2026-09-23-05 (pedido de Sebastian): en Carga Rápida, al terminar
-  // de cargar un destino el foco tiene que volver solo al campo de
-  // "Destino" de la fila siguiente — sin esto, el operador tiene que
-  // clickear a mano en cada fila nueva, que es justo el paso que Carga
-  // Rápida existe para evitar.
+  // Foco automático al montar (o al cambiar de valor truthy — un número
+  // sirve como "token" para poder re-disparar el foco más de una vez, ya
+  // que el efecto de abajo sólo corre cuando el valor cambia). Dos usos
+  // hoy, cada uno con su propio motivo — ninguno es NOTA-2026-09-23-05 (esa
+  // nota es sobre el modal de "Alta rápida de cliente", ver
+  // cliente-alta-rapida-dialog.tsx):
+  //  - Carga Rápida (carga-rapida-view.tsx): al terminar de cargar un
+  //    destino el foco vuelve solo al campo de la fila siguiente, para que
+  //    el operador no tenga que clickear a mano en cada fila nueva.
+  //  - Nueva Encomienda individual (nueva-view.tsx/alta-individual-view.tsx,
+  //    NOTA-2026-09-23-05): al crear (o elegir) el remitente desde el modal
+  //    de alta rápida, el foco pasa solo al campo de destino — el paso
+  //    siguiente real del mostrador.
   autoFocus,
 }: {
   id?: string;
@@ -49,7 +57,7 @@ export function ClienteSearchInput({
   placeholder?: string;
   disabled?: boolean;
   ariaInvalid?: boolean;
-  autoFocus?: boolean;
+  autoFocus?: boolean | number;
 }) {
   const [open, setOpen] = React.useState(false);
   const [results, setResults] = React.useState<ClienteApi[]>([]);

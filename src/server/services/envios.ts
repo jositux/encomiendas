@@ -286,8 +286,12 @@ export interface RemitoApi {
   flete: string;
   contrarreembolso: string | null;
   gasto: string;
-  pagoServicio: { lugar: LugarPagoApi; forma: FormaPagoApi };
-  importes: { cobrado: string; aCobrar: string; total: string };
+  // CONTRATO-2026-09-24-01 (Sebastian, 2026-09-24): pagoServicio pasa a
+  // nullable (null solo con tipo "interno"), e importes.* ahora puede venir
+  // null (= renglon en blanco en el papel del legacy) en vez de siempre
+  // traer un string. Ver remito-view.tsx (money() y el bloque de "Pago:").
+  pagoServicio: { lugar: LugarPagoApi; forma: FormaPagoApi } | null;
+  importes: { cobrado: string | null; aCobrar: string | null; total: string | null };
   levanto: string;
 }
 
