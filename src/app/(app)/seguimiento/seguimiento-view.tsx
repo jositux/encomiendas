@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { CopyButton } from "@/components/shared/copy-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -396,8 +397,16 @@ function SeguimientoResultado({
               </p>
             </div>
             <div className="text-right text-xs text-muted-foreground">
-              <p>Número {envio.numero}</p>
-              {envio.remitoManualNumero && <p>Remito {envio.remitoManualNumero}</p>}
+              <p className="flex items-center justify-end gap-1">
+                Número {envio.numero}
+                <CopyButton value={envio.numero} label="Número de envío" />
+              </p>
+              {envio.remitoManualNumero && (
+                <p className="flex items-center justify-end gap-1">
+                  Remito {envio.remitoManualNumero}
+                  <CopyButton value={envio.remitoManualNumero} label="Remito manual" />
+                </p>
+              )}
               <p>{envio.cantidadBultos} bulto{envio.cantidadBultos === 1 ? "" : "s"}</p>
             </div>
           </div>

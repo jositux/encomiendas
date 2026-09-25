@@ -11,10 +11,12 @@ import {
   TriangleAlert,
   ClipboardList,
   QrCode,
+  ScanBarcode,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { QrScannerDialog } from "@/components/shared/qr-scanner-dialog";
+import { BarcodeScannerDialog } from "@/components/shared/barcode-scanner-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -395,6 +397,7 @@ function BuscadorEnvioSuelto({
 }) {
   const [query, setQuery] = React.useState("");
   const [buscando, setBuscando] = React.useState(false);
+  const [scannerOpen, setScannerOpen] = React.useState(false);
   // Se guarda el envío completo (no el recorte EnvioDePlanillaApi de antes)
   // porque acá hace falta estadoActual/custodiaActualUsuarioId para decidir
   // qué mostrar — envioApiComoFilaDePlanilla() se sigue usando recién al
@@ -408,8 +411,8 @@ function BuscadorEnvioSuelto({
   // equipo de backend, sección 31).
   const puedeRecibir = permisos.includes("custodia:registrar");
 
-  async function buscar() {
-    const texto = query.trim();
+  async function buscar(valorOverride?: string) {
+    const texto = (valorOverride ?? query).trim();
     if (!texto) return;
     setBuscando(true);
     setNoEncontrado(false);
@@ -426,6 +429,30 @@ function BuscadorEnvioSuelto({
     } finally {
       setBuscando(false);
     }
+  }
+
+  // El código de barras (Code 39) impreso en el remito codifica
+  // `RemitoApi.codigoBarras`, que el propio backend documenta como "numero
+  // SIN el guion" (ver Barcode39/jsbarcode y la sección 13 del plan de
+  // integración) -- ej. numero "000000009-3" se imprime como "0000000093".
+  // Para volver a buscarlo hay que deshacer exactamente esa transformación
+  // (nunca al revés: sacar el guion), insertando el guion antes del último
+  // dígito -- el dígito verificador siempre es el último carácter del
+  // numero real, sea cual sea la cantidad de dígitos del correlativo.
+  function numeroDesdeCodigoBarras(codigo: string): string {
+    const digitos = codigo.replace(/\D/g, "");
+    if (digitos.length < 2) return digitos;
+    return `${digitos.slice(0, -1)}-${digitos.slice(-1)}`;
+  }
+
+  // Se usa el valor leído directo (ya convertido a `numero`), sin esperar a
+  // que `query` se actualice -- mismo criterio que ya usa
+  // BuscadorPlanillaPorCodigo con su QR.
+  function handleScan(valor: string) {
+    setScannerOpen(false);
+    const numero = numeroDesdeCodigoBarras(valor);
+    setQuery(numero);
+    buscar(numero);
   }
 
   async function recibir() {
@@ -466,7 +493,17 @@ function BuscadorEnvioSuelto({
             placeholder="Ej: 000000009-3 o A17"
             onKeyDown={(e) => e.key === "Enter" && buscar()}
           />
-          <Button onClick={buscar} disabled={buscando || !query.trim()} className="gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setScannerOpen(true)}
+            aria-label="Escanear código de barras del remito"
+            title="Escanear código de barras"
+          >
+            <ScanBarcode className="size-4" />
+          </Button>
+          <Button onClick={() => buscar()} disabled={buscando || !query.trim()} className="gap-1.5">
             {buscando ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
             Buscar
           </Button>
@@ -521,6 +558,13 @@ function BuscadorEnvioSuelto({
           </div>
         )}
       </CardContent>
+      <BarcodeScannerDialog
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onScan={handleScan}
+        title="Escanear remito"
+        description="Apuntá la cámara al código de barras del remito."
+      />
     </Card>
   );
 }

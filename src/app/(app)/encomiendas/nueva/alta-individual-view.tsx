@@ -101,6 +101,14 @@ export function AltaIndividualView({
     }
     return clientUuidRef.current;
   }, []);
+  // NOTA-2026-09-23-04 (pedido de Sebastian): foco automático en "Remito
+  // N°" al entrar a Nueva Encomienda desde el menú — es el primer dato que
+  // el operador tipea con el remito de papel en la mano, así se ahorra el
+  // click. Reutiliza el mismo remitoInputRef que ya existe para el foco de
+  // REMITO_EN_USO (NOTA-2026-09-21-01).
+  React.useEffect(() => {
+    remitoInputRef.current?.focus();
+  }, []);
   // Correccion de agent-back en el hilo de NOTA-2026-09-21-01 (6 min despues
   // de la spec original) + [CONTRATO] CONTRATO-2026-09-21-01: remitoManual
   // es SOLO digitos (1 a 6), no texto libre como decia la spec original.
@@ -214,6 +222,7 @@ export function AltaIndividualView({
       setCargados((prev) => [resultado.envio, ...prev]);
       toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} cargada correctamente`);
       resetForm();
+      remitoInputRef.current?.focus();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo cargar la encomienda.");
     } finally {
