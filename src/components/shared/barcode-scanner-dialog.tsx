@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { BarcodeFormat, BrowserMultiFormatReader, DecodeHintType } from "@zxing/library";
+import {
+  BarcodeFormat,
+  BrowserMultiFormatReader,
+  ChecksumException,
+  DecodeHintType,
+  FormatException,
+  NotFoundException,
+} from "@zxing/library";
 import { ScanBarcode } from "lucide-react";
 
 import {
@@ -102,13 +109,43 @@ export function BarcodeScannerDialog({
           return;
         }
         streamRef.current = stream;
-        await reader.decodeFromStream(stream, video, (result) => {
-          // ZXing llama a este callback en cada cuadro, con `result`
-          // indefinido cuando todavía no encontró nada -- es el caso
-          // normal mientras se apunta la cámara, no un error real.
-          if (detectedRef.current || !result) return;
-          detectedRef.current = true;
-          onScanRef.current(result.getText());
+        await reader.decodeFromStream(stream, video, (result, err) => {
+          // ZXing llama a este callback en cada cuadro. `result` viene
+          // indefinido con un `NotFoundException`/`ChecksumException`/
+          // `FormatException` en `err` cuando todavía no encontró nada en
+          // ese cuadro -- es el caso normal mientras se apunta la cámara,
+          // no un error real, así que antes se ignoraba el segundo
+          // parámetro por completo.
+          //
+          // BUG real encontrado en vivo (2026-09-26, TRY_HARDER puesto y
+          // sigue sin leer, ni en pantalla ni impreso): el loop interno de
+          // ZXing (`BrowserCodeReader.decodeContinuously`, ver
+          // node_modules/@zxing/library/esm/browser/BrowserCodeReader.js)
+          // SE DETIENE SOLO Y PARA SIEMPRE ante cualquier error que no sea
+          // uno de esos tres tipos -- lo manda a `console.error` y nunca
+          // vuelve a programar el próximo intento. Como acá no
+          // revisábamos `err`, esto se veía exactamente como "se queda
+          // esperando, nunca lee nada": ni un error visible en el diálogo
+          // ni un reintento, sea cual sea la causa real (por ejemplo un
+          // error de canvas/getImageData en algún navegador/dispositivo
+          // puntual). Mostrarlo en el diálogo es lo que nos va a decir
+          // qué está pasando de verdad en el celular de Josi.
+          if (detectedRef.current) return;
+          if (result) {
+            detectedRef.current = true;
+            onScanRef.current(result.getText());
+            return;
+          }
+          if (
+            err &&
+            !(err instanceof NotFoundException) &&
+            !(err instanceof ChecksumException) &&
+            !(err instanceof FormatException)
+          ) {
+            setError(
+              `Error inesperado del lector (${err.name ?? "?"}): ${err.message ?? String(err)}`
+            );
+          }
         });
       } catch (err) {
         if (cancelado) return;
