@@ -71,7 +71,15 @@ export function BarcodeScannerDialog({
       setError(null);
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
+          // Sin `width`/`height`, algunos navegadores (sobre todo Safari/iOS)
+          // arrancan la camara trasera en una resolucion baja por default
+          // (tipo 640x480). Un CODE 39 de varios digitos tiene barras finas
+          // que a esa resolucion quedan borrosas/indistinguibles para ZXing
+          // -- probablemente la causa real de "no lee nada" reportada en
+          // vivo (2026-09-26). `ideal` es un pedido, no una garantia: si el
+          // dispositivo no da para tanto, el navegador cae a lo que pueda
+          // sin tirar error.
+          video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false,
         });
         if (cancelado) {
@@ -125,14 +133,21 @@ export function BarcodeScannerDialog({
               arriba. El error se muestra como overlay encima. Proporción
               `aspect-video` (más ancha que alta) en vez de `aspect-square`
               -- un código de barras 1D es horizontal, conviene más marco a
-              los costados que arriba/abajo. */}
+              los costados que arriba/abajo.
+              Recuadro guía: `inset-y-4` (no `inset-y-14` como antes) --
+              bug reportado en vivo 2026-09-26 ("el espacio para poner el
+              código es muy chico"). En un dialog angosto (celular), el
+              contenedor `aspect-video` mide ~170px de alto: con 56px de
+              inset arriba Y 56px abajo, el recuadro quedaba en ~55px de
+              alto, apenas usable. `inset-y-4` deja ~80% del alto real del
+              cuadro disponible. */}
           <video ref={setVideoRef} className="h-full w-full object-cover" muted playsInline />
           {error ? (
             <div className="absolute inset-0 flex items-center justify-center bg-black/90 px-6">
               <p className="text-center text-sm text-white">{error}</p>
             </div>
           ) : (
-            <div className="pointer-events-none absolute inset-x-8 inset-y-14 rounded-lg border-2 border-white/80" />
+            <div className="pointer-events-none absolute inset-x-6 inset-y-4 rounded-lg border-2 border-white/80" />
           )}
         </div>
       </DialogContent>
