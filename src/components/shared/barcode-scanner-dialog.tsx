@@ -65,6 +65,21 @@ export function BarcodeScannerDialog({
 
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.CODE_39]);
+    // BUG real encontrado en vivo (2026-09-26, probado con Josi contra un
+    // remito impreso real -- no era tema de resolucion ni de encuadre, el
+    // lector nunca detectaba nada). Causa: sin `TRY_HARDER`, OneDReader (la
+    // base de todos los lectores 1D de ZXing, ver core/oned/OneDReader.ts)
+    // solo escanea filas horizontales de la imagen cada `altura >> 5` px
+    // (un puñado de lineas espaciadas); con el hint en `true` pasa a
+    // `altura >> 8` (muchisimas mas lineas). Sin esto, si el codigo de
+    // barras no cae justo sobre una de esas pocas lineas de muestreo --muy
+    // probable con la camara quieta, ya que el video no cambia de cuadro a
+    // cuadro salvo que el usuario mueva la mano-- el lector no lo
+    // encuentra NUNCA, por mas cuadros que procese. Es la causa real de
+    // "se queda esperando, no lee nada", no el tamaño del recuadro guia ni
+    // la resolucion de camara (esos dos si valia la pena arreglarlos, pero
+    // no alcanzaban solos).
+    hints.set(DecodeHintType.TRY_HARDER, true);
     const reader = new BrowserMultiFormatReader(hints);
 
     const iniciar = async () => {
