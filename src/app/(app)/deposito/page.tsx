@@ -3,7 +3,7 @@ import { listConsultaEnvios } from "@/server/services/consultas";
 import { listLocalidadesSeguro } from "@/server/services/localidades";
 import { listSectoresSeguro } from "@/server/services/sectores";
 import { listUsuariosSeguro } from "@/server/services/usuarios";
-import { DepositoView } from "./deposito-view";
+import { DepositoView, tabValida } from "./deposito-view";
 
 // Reemplaza a la vieja pantalla mock de Depósito (getEncomiendas/getPersonal,
 // modelo "Encomienda" que no existe en el backend real) — contrato completo
@@ -24,8 +24,17 @@ import { DepositoView } from "./deposito-view";
 // corregir-sector/mover/confirmar-con-entrega, pero su ausencia no debería
 // tirar abajo la pantalla si el rol actual no tiene `geografia:leer`/
 // `usuarios:leer` — misma idea que ya usan Custodia/Chofer/Seguimiento.
-export default async function DepositoPage() {
-  const [session, inicial, localidades, sectores, usuarios] = await Promise.all([
+export default async function DepositoPage({
+  searchParams,
+}: {
+  // NOTA-2026-09-28-01: administracion aterriza en
+  // `/deposito?tab=confirmaciones` (ver landing.ts) -- `tabValida` descarta
+  // cualquier valor que no sea una pestaña real (typo, link viejo, etc.),
+  // dejando el default de siempre ("Pendientes").
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const [{ tab }, session, inicial, localidades, sectores, usuarios] = await Promise.all([
+    searchParams,
     getSession(),
     listConsultaEnvios({ estado: "REGISTRADO" }),
     listLocalidadesSeguro(),
@@ -39,6 +48,7 @@ export default async function DepositoPage() {
       sectores={sectores}
       usuarios={usuarios}
       permisos={session?.permisos ?? []}
+      tabInicial={tabValida(tab)}
     />
   );
 }

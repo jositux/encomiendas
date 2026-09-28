@@ -108,7 +108,7 @@ function guiaDeEnvio(e: EnvioApi): string {
   return (e.guiaDiaria as string | undefined) || e.numero || e.id?.slice(0, 8) || "—";
 }
 
-type TabKey =
+export type TabKey =
   | "pendientes"
   | "en_transito"
   | "para_entregar"
@@ -128,6 +128,16 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "fallidos", label: "Fallidos" },
   { key: "confirmaciones", label: "Conf. pendientes" },
 ];
+
+// NOTA-2026-09-28-01 (opcion 1, landing por rol): administracion aterriza
+// directo en la pestaña "Conf. pendientes" (`/deposito?tab=confirmaciones`,
+// ver landing.ts). Hasta ahora `tab` era puro estado de React -- nunca leia
+// la URL -- asi que aterrizar ahi siempre mostraba "Pendientes" igual.
+// `tabValida` deja que page.tsx (Server Component, ve el query string)
+// valide el valor sin duplicar la lista de keys ahi.
+export function tabValida(valor: string | undefined): TabKey | undefined {
+  return TABS.some((t) => t.key === valor) ? (valor as TabKey) : undefined;
+}
 
 // Pestaña -> `estado` real que se pide a /consultas/envios. "en_transito" y
 // "para_entregar" comparten el mismo estado (EN_CUSTODIA); se separan más
@@ -151,14 +161,21 @@ export function DepositoView({
   sectores,
   usuarios,
   permisos,
+  tabInicial,
 }: {
   inicial: PaginaEnvios;
   localidades: LocalidadBackend[];
   sectores: SectorApi[];
   usuarios: UsuarioApi[];
   permisos: string[];
+  tabInicial?: TabKey;
 }) {
-  const [tab, setTab] = React.useState<TabKey>("pendientes");
+  // El `useEffect` de mas abajo (atado a `[tab]`) ya distingue "primer
+  // render en pendientes" (no vuelve a pedir nada, page.tsx ya lo trajo)
+  // de "primer render en otra pestaña" (pide esa pestaña de una) -- por
+  // eso alcanza con arrancar el estado en `tabInicial` sin tocar nada mas
+  // de esa logica.
+  const [tab, setTab] = React.useState<TabKey>(tabInicial ?? "pendientes");
   const [cargando, setCargando] = React.useState(false);
   const [envios, setEnvios] = React.useState<EnvioApi[]>(inicial.datos);
   const [fallidos, setFallidos] = React.useState<EnvioConFallidosApi[]>([]);
