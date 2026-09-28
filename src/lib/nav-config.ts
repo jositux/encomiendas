@@ -10,6 +10,7 @@ import {
   Search,
   ClipboardList,
   Scissors,
+  PackageCheck,
 } from "lucide-react";
 
 export interface NavItem {
@@ -26,11 +27,34 @@ export interface NavItem {
   // toda la pantalla al entrar — mejor no mostrar la opción que mostrarla
   // y que explote.
   permiso?: string;
+  // NOTA-2026-09-28-03 (menús por rol): algunos items no se pueden
+  // distinguir con un solo `permiso` porque el permiso relevante lo
+  // comparten dos roles distintos (ej. `custodia:registrar` lo tienen
+  // tanto chofer como operador). `visiblePara`, cuando está presente,
+  // reemplaza a `permiso` para decidir visibilidad — recibe la lista de
+  // permisos de la sesión y devuelve si el item debe verse.
+  visiblePara?: (permisos: string[]) => boolean;
 }
 
 export interface NavGroup {
   label: string;
   items: NavItem[];
+}
+
+// NOTA-2026-09-28-03: distingue operador (y sistema) de chofer/supervisor/
+// administración. `custodia:registrar` solo no alcanza porque lo tienen
+// tanto chofer como operador — hace falta excluir a quien además tenga
+// `entregas:registrar` (chofer). `envios:crear` cubre el caso de sistema
+// (que tiene ambos permisos) y de cualquier futuro rol operador-like que
+// no tenga `custodia:registrar` pero sí alta de envíos.
+// Verificado a mano contra las 5 listas reales de permisos (ver
+// landing.test.ts): chofer no/no, operador si/si, supervisor no/no,
+// administración no/no, sistema si/si.
+export function esOperadorOSistema(permisos: string[]): boolean {
+  return (
+    (permisos.includes("custodia:registrar") && !permisos.includes("entregas:registrar")) ||
+    permisos.includes("envios:crear")
+  );
 }
 
 export const NAV_GROUPS: NavGroup[] = [
@@ -82,11 +106,32 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/chofer",
         icon: ClipboardList,
         description: "Cargar/recibir planillas y registrar entregas, intentos e incidencias",
-        // Corregido 2026-09-17 (sección 27 del plan): NO es despachos:leer
-        // (permiso de oficina que un chofer real nunca tiene) — el punto
-        // de entrada real de la pantalla es la búsqueda de planilla por
-        // código, que solo pide planillas:leer.
-        permiso: "planillas:leer",
+        // NOTA-2026-09-28-03: antes era `planillas:leer` (corregido
+        // 2026-09-17, sección 27 del plan). Se cambia a `entregas:registrar`
+        // porque ahora "Chofer" debe verse solo para el rol chofer (y
+        // sistema) — operador también tiene `planillas:leer` pero a partir
+        // de esta nota usa las pantallas nuevas "Recepción" y "Planillas"
+        // en su lugar, no "Chofer". `entregas:registrar` es el permiso que
+        // distingue exactamente a chofer/sistema de operador (ver tabla en
+        // esOperadorOSistema).
+        permiso: "entregas:registrar",
+      },
+      {
+        title: "Recepción",
+        href: "/recepcion",
+        icon: PackageCheck,
+        description: "Recibir un envío suelto por número o guía, sin pasar por una planilla",
+        // NOTA-2026-09-28-03: pantalla nueva para operador (y sistema).
+        visiblePara: esOperadorOSistema,
+      },
+      {
+        title: "Planillas",
+        href: "/planillas",
+        icon: ClipboardList,
+        description: "Buscar, cargar y recibir planillas por despacho y localidad",
+        // NOTA-2026-09-28-03: pantalla nueva para operador (y sistema) —
+        // es lo que antes hacía el operador dentro de "Chofer".
+        visiblePara: esOperadorOSistema,
       },
       {
         title: "Despachos",
@@ -161,6 +206,6 @@ export const ALL_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 // apareciendo en la grilla, porque nadie había actualizado esa segunda
 // copia. Un solo lugar, una sola vez que arreglar.
 export function esVisibleParaPermisos(item: NavItem, permisos: string[] | undefined): boolean {
+  if (item.visiblePara) return item.visiblePara(permisos ?? []);
   return !item.permiso || (permisos ?? []).includes(item.permiso);
 }
-
