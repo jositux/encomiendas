@@ -53,18 +53,22 @@ export function BarcodeScannerDialog({
   }, []);
   const streamRef = React.useRef<MediaStream | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  // Diagnostico en vivo (2026-09-28): pedimos 1920x1080 "ideal" en
-  // getUserMedia, pero es un pedido, no una garantia -- si el celular real
-  // cae a una resolucion bajisima (tipo 640x480 o menos), un codigo de 11
-  // digitos puede terminar ocupando muy pocos pixeles de ancho en el cuadro
-  // capturado y volverse indecodificable aunque se vea nitido a simple
-  // vista en la pantalla del celular (lo probamos generando el mismo
-  // codigo con jsbarcode y decodificandolo con la misma config de ZXing:
-  // decodifica perfecto desde 220px de ancho efectivo para arriba, y falla
-  // sistematicamente por debajo de ~200px). Mostramos la resolucion real
-  // que nos dio la camara para confirmar o descartar esto de una vez, sin
-  // depender de adivinar.
-  const [resolucionCamara, setResolucionCamara] = React.useState<string | null>(null);
+  // Diagnostico en vivo (2026-09-28): "si giro el celular no escanea". La
+  // resolucion de camara pedida en getUserMedia (mas abajo) ya se
+  // descarto como causa -- lo que si puede explicar un fallo atado
+  // especificamente a la ROTACION es que ZXing decodifica el CUADRO CRUDO
+  // del <video> a su resolucion nativa (videoWidth/videoHeight, confirmado
+  // antes leyendo BrowserCodeReader.js), no lo que se ve en pantalla. El
+  // navegador SI rota lo que se MUESTRA en el <video> segun la orientacion
+  // real del telefono, pero hay dispositivos/versiones donde ese cuadro
+  // crudo no sigue esa misma rotacion -- si pasa eso, un codigo que a
+  // simple vista se ve horizontal le llegaria en VERTICAL al lector, y
+  // OneDReader (la base de todo lector 1D de ZXing) solo barre lineas
+  // HORIZONTALES: nunca lo encontraria, sea cual sea TRY_HARDER. Se
+  // muestra la orientacion de pantalla en vivo para poder confirmar (o
+  // descartar) esto la proxima vez que se pruebe girando el telefono, en
+  // vez de teorizar a ciegas.
+  const [orientacionPantalla, setOrientacionPantalla] = React.useState<string | null>(null);
   // Mismo motivo que en QrScannerDialog: `onScan` es una función nueva en
   // cada render del padre, así que se guarda en un ref para que el efecto
   // de abajo no reinicie la cámara en cada re-render mientras el diálogo
@@ -103,7 +107,6 @@ export function BarcodeScannerDialog({
 
     const iniciar = async () => {
       setError(null);
-      setResolucionCamara(null);
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           // Sin `width`/`height`, algunos navegadores (sobre todo Safari/iOS)
@@ -122,11 +125,6 @@ export function BarcodeScannerDialog({
           return;
         }
         streamRef.current = stream;
-        const [track] = stream.getVideoTracks();
-        const settings = track?.getSettings();
-        setResolucionCamara(
-          settings?.width && settings?.height ? `${settings.width}x${settings.height}` : "desconocida"
-        );
         await reader.decodeFromStream(stream, video, (result, err) => {
           // ZXing llama a este callback en cada cuadro. `result` viene
           // indefinido con un `NotFoundException`/`ChecksumException`/
@@ -183,9 +181,26 @@ export function BarcodeScannerDialog({
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       video.srcObject = null;
-      setResolucionCamara(null);
     };
   }, [open, videoReady]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const leer = () => {
+      const orientacion = typeof screen !== "undefined" ? screen.orientation : undefined;
+      setOrientacionPantalla(
+        orientacion ? `${orientacion.type} (${orientacion.angle}°)` : "desconocida"
+      );
+    };
+    leer();
+    window.addEventListener("orientationchange", leer);
+    window.addEventListener("resize", leer);
+    return () => {
+      window.removeEventListener("orientationchange", leer);
+      window.removeEventListener("resize", leer);
+      setOrientacionPantalla(null);
+    };
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -220,14 +235,15 @@ export function BarcodeScannerDialog({
           ) : (
             <div className="pointer-events-none absolute inset-x-6 inset-y-4 rounded-lg border-2 border-white/80" />
           )}
-          {/* Lectura de resolucion real de camara (diagnostico 2026-09-28,
-              ver comentario junto a `resolucionCamara` mas arriba) -- se
-              deja visible siempre que hay stream, no solo mientras se
-              depura, porque es informacion util para cualquiera que reporte
-              "no lee" a futuro. */}
-          {resolucionCamara && !error ? (
+          {/* Diagnostico de orientacion de pantalla (2026-09-28, ver
+              comentario junto a `orientacionPantalla` mas arriba) -- se
+              deja visible siempre que el dialogo esta abierto, no solo
+              mientras se depura, porque es informacion util para
+              confirmar o descartar la hipotesis de rotacion la proxima vez
+              que alguien reporte "si giro el celular no escanea". */}
+          {orientacionPantalla && !error ? (
             <p className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-2 py-0.5 text-[10px] text-white/80">
-              Cámara: {resolucionCamara}
+              Pantalla: {orientacionPantalla}
             </p>
           ) : null}
         </div>
