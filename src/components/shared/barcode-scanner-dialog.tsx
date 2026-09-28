@@ -53,6 +53,18 @@ export function BarcodeScannerDialog({
   }, []);
   const streamRef = React.useRef<MediaStream | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  // Diagnostico en vivo (2026-09-28): pedimos 1920x1080 "ideal" en
+  // getUserMedia, pero es un pedido, no una garantia -- si el celular real
+  // cae a una resolucion bajisima (tipo 640x480 o menos), un codigo de 11
+  // digitos puede terminar ocupando muy pocos pixeles de ancho en el cuadro
+  // capturado y volverse indecodificable aunque se vea nitido a simple
+  // vista en la pantalla del celular (lo probamos generando el mismo
+  // codigo con jsbarcode y decodificandolo con la misma config de ZXing:
+  // decodifica perfecto desde 220px de ancho efectivo para arriba, y falla
+  // sistematicamente por debajo de ~200px). Mostramos la resolucion real
+  // que nos dio la camara para confirmar o descartar esto de una vez, sin
+  // depender de adivinar.
+  const [resolucionCamara, setResolucionCamara] = React.useState<string | null>(null);
   // Mismo motivo que en QrScannerDialog: `onScan` es una función nueva en
   // cada render del padre, así que se guarda en un ref para que el efecto
   // de abajo no reinicie la cámara en cada re-render mientras el diálogo
@@ -91,6 +103,7 @@ export function BarcodeScannerDialog({
 
     const iniciar = async () => {
       setError(null);
+      setResolucionCamara(null);
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           // Sin `width`/`height`, algunos navegadores (sobre todo Safari/iOS)
@@ -109,6 +122,11 @@ export function BarcodeScannerDialog({
           return;
         }
         streamRef.current = stream;
+        const [track] = stream.getVideoTracks();
+        const settings = track?.getSettings();
+        setResolucionCamara(
+          settings?.width && settings?.height ? `${settings.width}x${settings.height}` : "desconocida"
+        );
         await reader.decodeFromStream(stream, video, (result, err) => {
           // ZXing llama a este callback en cada cuadro. `result` viene
           // indefinido con un `NotFoundException`/`ChecksumException`/
@@ -165,6 +183,7 @@ export function BarcodeScannerDialog({
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       video.srcObject = null;
+      setResolucionCamara(null);
     };
   }, [open, videoReady]);
 
@@ -201,6 +220,16 @@ export function BarcodeScannerDialog({
           ) : (
             <div className="pointer-events-none absolute inset-x-6 inset-y-4 rounded-lg border-2 border-white/80" />
           )}
+          {/* Lectura de resolucion real de camara (diagnostico 2026-09-28,
+              ver comentario junto a `resolucionCamara` mas arriba) -- se
+              deja visible siempre que hay stream, no solo mientras se
+              depura, porque es informacion util para cualquiera que reporte
+              "no lee" a futuro. */}
+          {resolucionCamara && !error ? (
+            <p className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-2 py-0.5 text-[10px] text-white/80">
+              Cámara: {resolucionCamara}
+            </p>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

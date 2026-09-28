@@ -41,9 +41,32 @@ export function Barcode39({
     // jsbarcode a un `viewBox` y soltamos el width/height fijo, para que el
     // tamaño final quede 100% controlado por CSS (className) y escale de
     // verdad manteniendo la proporción, sin desbordar ni recortarse.
-    const width = svg.getAttribute("width");
-    const height = svg.getAttribute("height");
-    if (width && height) {
+
+    // BUG REAL encontrado en vivo (2026-09-28, este era el motivo de fondo
+    // de "el lector no lee nada" reportado desde el 09-26 -- no era la
+    // camara ni la resolucion). `svg.getAttribute("width")` no siempre
+    // devuelve un numero pelado: jsbarcode puede fijarlo como "390px" (con
+    // unidad). El codigo de arriba lo pegaba tal cual dentro del viewBox
+    // ("0 0 390px 55px"), y un viewBox con unidades es INVALIDO por spec --
+    // el navegador lo descarta (`svg.viewBox.baseVal` queda en 0,0,0,0), lo
+    // que apaga el escalado por completo. Sin escalado, el dibujo interno
+    // se posiciona con sus coordenadas crudas (hasta x=390) dentro de un
+    // recuadro CSS de apenas 220px de ancho -- el ~43% derecho del codigo
+    // queda directamente RECORTADO (no achicado: invisible), confirmado
+    // inspeccionando el DOM real de un remito (`getBoundingClientRect` =
+    // 220x40 contra barras posicionadas hasta x=390). Un codigo de barras
+    // al que le falta un tercio de sus caracteres (incluido el caracter de
+    // stop) no lo lee NINGUNA camara, sea cual sea su resolucion o foco --
+    // de ahi que agrandar el recuadro guia y pedir mas resolucion de
+    // camara (fixes anteriores) no arreglara nada por si solos. Fix:
+    // `parseFloat` pela cualquier unidad ("390px" -> 390) antes de armar el
+    // viewBox, y se valida que el resultado sea un numero positivo real
+    // antes de aplicarlo (si jsbarcode alguna vez no fija width/height, o
+    // los fija en 0, se deja el <svg> como esta en vez de escribir un
+    // viewBox invalido de nuevo).
+    const width = parseFloat(svg.getAttribute("width") ?? "");
+    const height = parseFloat(svg.getAttribute("height") ?? "");
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       svg.removeAttribute("width");
       svg.removeAttribute("height");
