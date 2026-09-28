@@ -52,6 +52,7 @@ import {
   type OrigenState,
   type DestinoState,
 } from "./nueva-view.helpers";
+import { imprimirRemitoAutomatico, abrirRemito } from "./imprimir-remito";
 
 // Extraído de nueva-view.tsx (paso 2b de la división — ver el paso 2a en
 // carga-rapida-view.tsx y el análisis de la conversación del 2026-09-24).
@@ -237,7 +238,21 @@ export function AltaIndividualView({
         return;
       }
       setCargados((prev) => [resultado.envio, ...prev]);
-      toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} cargada correctamente`);
+      // NOTA-2026-09-28-02, ajustada en vivo por el usuario: automático,
+      // sin que el operador apriete nada -- al confirmar el alta salta
+      // solo el diálogo de impresión del remito recién creado (ver
+      // imprimir-remito.ts: usa un <iframe> oculto, no una pestaña
+      // nueva, para no chocar con el bloqueo de pop-ups). El botón de la
+      // notificación queda como respaldo manual (reimprimir, o por si el
+      // automático no llegó a saltar).
+      imprimirRemitoAutomatico(resultado.envio.numero);
+      toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} cargada correctamente`, {
+        duration: 10000,
+        action: {
+          label: "Imprimir remito",
+          onClick: () => abrirRemito(resultado.envio.numero),
+        },
+      });
       resetForm();
       remitoInputRef.current?.focus();
     } catch (err) {

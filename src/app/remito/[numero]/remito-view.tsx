@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Barcode39 } from "@/components/shared/barcode39";
@@ -35,6 +36,23 @@ function money(value: string | null) {
 }
 
 export function RemitoView({ remito }: { remito: RemitoApi }) {
+  // NOTA-2026-09-28-02: si esta página está embebida en el <iframe> oculto
+  // de imprimir-remito.ts (impresión automática al terminar un alta),
+  // avisarle a la ventana padre que ya terminó de pintar -- código de
+  // barras incluido, que Barcode39 dibuja en su propio useEffect; por
+  // orden de commit de React los efectos de los hijos corren antes que
+  // los del padre, así que acá abajo el barcode ya está listo. Si la
+  // página se abre suelta (pestaña nueva, visita directa) esto no hace
+  // nada: window.parent es la misma ventana.
+  React.useEffect(() => {
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        { tipo: "remito-listo", numero: remito.numero },
+        window.location.origin
+      );
+    }
+  }, [remito.numero]);
+
   return (
     <div className="mx-auto max-w-5xl p-4 print:max-w-none print:p-0">
       <div className="mb-4 flex items-center justify-between print:hidden">
