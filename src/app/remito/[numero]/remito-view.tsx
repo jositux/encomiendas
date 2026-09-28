@@ -96,6 +96,23 @@ function Panel({
           el número/guía/fecha arriba, sin competir por ancho con nada, y el
           código de barras abajo en su propia fila, con un alto fijo chico y
           ancho acotado para que entre cómodo dentro de la columna. */}
+      {/* Tamaño agrandado (2026-09-28): "ancho acotado" de arriba quedó en
+          max-w-[220px] por las dudas cuando el código todavía compartía
+          fila con el número -- ya apilado en su propia fila, ese límite no
+          compite por espacio con nada y lo dejaba mucho más chico de lo
+          que la columna realmente permite. Un CODE 39 de 10 dígitos recién
+          decodifica de forma confiable con margen real por encima de
+          ~220px de ancho EFECTIVO en la imagen que procesa la cámara (lo
+          medí generando el mismo código y decodificándolo con la misma
+          config de ZXing que usa el scanner) -- a 220px justo, cualquier
+          variación de encuadre, foco o ángulo del celular lo empuja para
+          el lado que no lee (reportado en vivo 2026-09-28: "lo logré hacer
+          andar 1 vez y después no" / "que ocupe el ancho del contenedor,
+          es que muy pequeño no lee eso nomás"). Se saca el `max-w` y se
+          deja que ocupe el 100% del ancho real de la columna (`w-full`,
+          controlado por el padre) -- ya no hay nada con quien compartir
+          ese ancho, así que no hay motivo para acotarlo por debajo de lo
+          que el layout deja disponible. */}
       <div className="flex flex-col gap-1.5">
         <p className="flex items-center gap-1 whitespace-nowrap font-mono text-lg font-semibold">
           #{remito.numero}
@@ -116,7 +133,18 @@ function Panel({
         {completo && (
           <Barcode39
             value={remito.codigoBarras}
-            className="mt-1 h-10 w-full max-w-[220px] print:h-9"
+            // `preserveAspectRatio="xMidYMid meet"` (ver Barcode39) escala
+            // el dibujo para que entre en el recuadro sin desbordar, atado
+            // al eje mas chico -- si el alto de este recuadro fuera muy
+            // bajo relativo al ancho del contenedor, terminaria limitando
+            // el ANCHO real del codigo por debajo de lo que el contenedor
+            // permite (el problema que se busca resolver con w-full de
+            // arriba). El codigo tiene una proporcion fija ~7.1:1
+            // (390x55 nativo de jsbarcode); h-20/print:h-14 le dan bastante
+            // mas alto del que ese ancho jamas necesitaria, asi que en la
+            // practica siempre queda atado al ANCHO -- ocupa el 100% del
+            // contenedor tanto en pantalla como al imprimir.
+            className="mt-1 h-20 w-full print:h-14"
           />
         )}
       </div>
