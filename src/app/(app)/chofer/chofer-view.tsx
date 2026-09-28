@@ -25,13 +25,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -40,7 +33,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  listPlanillasAction,
   buscarPlanillaPorCodigoAction,
   cargarPlanillaAction,
   recibirPlanillaAction,
@@ -50,9 +42,8 @@ import {
   registrarIncidenciaAction,
   buscarSeguimientoAction,
 } from "@/server/actions";
-import type { DespachoApi, PlanillaApi, EnvioDePlanillaApi } from "@/server/services/custodia";
+import type { PlanillaApi, EnvioDePlanillaApi } from "@/server/services/custodia";
 import type { EnvioApi } from "@/server/services/envios";
-import type { LocalidadBackend } from "@/types";
 
 // Un envío deja de aparecer en `planilla.envios` apenas la planilla pasa a
 // "recibida" (confirmado en vivo, ver nota en buscarPlanillas) — a partir de
@@ -99,19 +90,9 @@ function guiaCorta(numero: string): string {
 }
 
 export function ChoferView({
-  despachos,
-  localidades,
-  puedeVerDespachos,
   permisos,
   usuarioId,
 }: {
-  despachos: DespachoApi[];
-  localidades: LocalidadBackend[];
-  // false para un chofer real (sin `despachos:leer`, permiso de oficina) —
-  // ver nota en page.tsx y sección 27 del plan. Con false, la búsqueda por
-  // despacho+localidad no se muestra; el punto de entrada es
-  // BuscadorPlanillaPorCodigo, más abajo.
-  puedeVerDespachos: boolean;
   // 2026-09-17 (sección 29 del plan / claude/esquema-permisos.md): se
   // pasa hacia abajo a PlanillaDetalle y EnvioDePlanillaRow para gatear en
   // la UI los botones de Cargar/Recibir (`custodia:registrar`) y
@@ -126,55 +107,7 @@ export function ChoferView({
   // Intento/Incidencia) o en la de otro (mostrar Recibir).
   usuarioId: string;
 }) {
-  const [despachoId, setDespachoId] = React.useState(despachos[0]?.id ?? "");
-  const [localidadId, setLocalidadId] = React.useState("");
-  const [planillas, setPlanillas] = React.useState<PlanillaApi[]>([]);
-  const [buscando, setBuscando] = React.useState(false);
-  const [buscado, setBuscado] = React.useState(false);
   const [planillaActiva, setPlanillaActiva] = React.useState<PlanillaApi | null>(null);
-  // De dónde salió `planillaActiva`, para saber cómo refrescarla después de
-  // una acción (cargar/recibir/entregar/...): por código no depende de
-  // ningún despacho/localidad elegido, así que no puede reusar
-  // `buscarPlanillas()`.
-  const [origenActiva, setOrigenActiva] = React.useState<"despacho" | "codigo" | null>(null);
-
-  async function buscarPlanillas() {
-    if (!despachoId || !localidadId) return;
-    setBuscando(true);
-    setBuscado(false);
-    try {
-      const data = await listPlanillasAction(despachoId, { localidadId });
-      setPlanillas(data);
-      setBuscado(true);
-      if (planillaActiva) {
-        const actualizada = data.find((p) => p.id === planillaActiva.id);
-        if (actualizada) {
-          // Confirmado en vivo el 2026-09-17: apenas la planilla pasa a
-          // "recibida" (POST /custodia/recepcion), GET /planillas deja de
-          // devolver sus envíos (pasan a seguimiento individual, ya sueltos
-          // de la planilla). Si no conserváramos la última lista no vacía,
-          // la UI perdería la referencia a esos envíos justo cuando hace
-          // falta entregarlos/marcar intento o incidencia uno por uno — se
-          // mantiene la lista anterior cuando el backend ya no la manda.
-          setPlanillaActiva(
-            actualizada.envios.length > 0
-              ? actualizada
-              : { ...actualizada, envios: planillaActiva.envios }
-          );
-          setOrigenActiva("despacho");
-        } else {
-          setPlanillaActiva(null);
-          setOrigenActiva(null);
-        }
-      }
-    } catch (err) {
-      toast.error("No se pudo buscar planillas", {
-        description: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setBuscando(false);
-    }
-  }
 
   async function buscarPorCodigo(codigo: string): Promise<boolean> {
     const r = await buscarPlanillaPorCodigoAction(codigo);
@@ -184,22 +117,26 @@ export function ChoferView({
     }
     const data = r.data!;
     setPlanillaActiva((prev) =>
-      // Mismo cuidado que en buscarPlanillas(): si ya está "recibida" y el
-      // backend ya no manda envios, conservamos los que ya teníamos.
+      // Confirmado en vivo el 2026-09-17: apenas la planilla pasa a
+      // "recibida" (POST /custodia/recepcion), GET /planillas deja de
+      // devolver sus envíos (pasan a seguimiento individual, ya sueltos de
+      // la planilla). Si no conserváramos la última lista no vacía, la UI
+      // perdería la referencia a esos envíos justo cuando hace falta
+      // entregarlos/marcar intento o incidencia uno por uno — se mantiene
+      // la lista anterior cuando el backend ya no la manda.
       prev && prev.id === data.id && data.envios.length === 0 && prev.envios.length > 0
         ? { ...data, envios: prev.envios }
         : data
     );
-    setOrigenActiva("codigo");
     return true;
   }
 
+  // Única fuente de `planillaActiva` hoy es la búsqueda por código (ver
+  // nota 2026-09-28 más abajo), así que refrescar es simplemente repetir
+  // esa misma búsqueda.
   async function refrescarActiva() {
-    if (origenActiva === "codigo" && planillaActiva) {
-      await buscarPorCodigo(planillaActiva.codigoCorto);
-    } else {
-      await buscarPlanillas();
-    }
+    if (!planillaActiva) return;
+    await buscarPorCodigo(planillaActiva.codigoCorto);
   }
 
   return (
@@ -209,92 +146,19 @@ export function ChoferView({
         description="Cargar y recibir planillas, y registrar entregas, intentos fallidos e incidencias por envío."
       />
 
+      {/* 2026-09-28: la búsqueda secundaria "por Despacho + Localidad" (para
+          quien tuviera `despachos:leer`/`geografia:leer`, permisos de
+          oficina) se sacó de esta pantalla a pedido explícito del usuario
+          ("ocultar de la página de chofer lo de despacho y localidad") --
+          con el landing por rol ya resuelto (NOTA-2026-09-28-01), supervisor
+          y administración tienen su propia pantalla (/despachos,
+          /deposito) y no necesitan este atajo secundario acá; para un
+          chofer real (sin esos permisos) nunca se mostraba de todos modos.
+          El único punto de entrada a una planilla en esta pantalla es
+          BuscadorPlanillaPorCodigo, justo abajo. */}
       <BuscadorPlanillaPorCodigo
-        onBuscar={(codigo) =>
-          buscarPorCodigo(codigo).then((encontrada) => {
-            if (!encontrada) return false;
-            // Al encontrar por código, limpiamos el resultado de la
-            // búsqueda por despacho para que no queden dos "activas"
-            // compitiendo visualmente.
-            setPlanillas([]);
-            setBuscado(false);
-            return true;
-          })
-        }
+        onBuscar={(codigo) => buscarPorCodigo(codigo)}
       />
-
-      {puedeVerDespachos && (
-        <>
-          <Card>
-            <CardContent className="flex flex-wrap items-end gap-3 pt-6">
-              <div className="grid gap-1.5">
-                <Label>Despacho</Label>
-                <Select value={despachoId} onValueChange={setDespachoId}>
-                  <SelectTrigger className="w-[280px]">
-                    <SelectValue placeholder="Elegí un despacho" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {despachos.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.recorridoNombre} · {d.fecha} #{d.secuencia} ({d.envios} envíos)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Localidad de destino</Label>
-                <Select value={localidadId} onValueChange={setLocalidadId}>
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue placeholder="Elegí una localidad" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {localidades.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {l.nombre}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={buscarPlanillas} disabled={!despachoId || !localidadId || buscando} className="gap-1.5">
-                {buscando ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
-                Buscar planillas
-              </Button>
-            </CardContent>
-          </Card>
-
-          {buscado && planillas.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No hay planillas para ese despacho y localidad.
-            </p>
-          )}
-
-          {planillas.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {planillas.map((p) => (
-                <Card
-                  key={p.id}
-                  className={`cursor-pointer transition-colors ${planillaActiva?.id === p.id ? "border-primary" : ""}`}
-                  onClick={() => {
-                    setPlanillaActiva(p);
-                    setOrigenActiva("despacho");
-                  }}
-                >
-                  <CardContent className="flex flex-col gap-1.5 pt-6">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-semibold">{p.codigoCorto}</span>
-                      <Badge variant="outline">{p.estado}</Badge>
-                    </div>
-                    <span className="text-sm text-muted-foreground">{p.localidadDestinoNombre} · {p.sectorDestinoNombre}</span>
-                    <span className="text-sm">{p.envios.length} envío{p.envios.length === 1 ? "" : "s"}</span>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </>
-      )}
 
       {planillaActiva && (
         <PlanillaDetalle planilla={planillaActiva} onRefrescar={refrescarActiva} permisos={permisos} />

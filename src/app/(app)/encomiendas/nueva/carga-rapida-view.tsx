@@ -14,6 +14,7 @@ import {
   GripVertical,
   Pencil,
   RotateCcw,
+  Printer,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -62,6 +63,7 @@ import {
   type OrigenState,
   type FilaDestino,
 } from "./nueva-view.helpers";
+import { imprimirRemitoAutomatico, abrirRemito } from "./imprimir-remito";
 
 // Extraído de nueva-view.tsx (paso 2a de la división de ese archivo — ver
 // análisis en la conversación del 2026-09-24 y el commit de
@@ -234,6 +236,12 @@ export function CargaRapidaView({
         toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} corregida correctamente`);
       } else {
         setCargados((prev) => [resultado.envio, ...prev]);
+        // NOTA-2026-09-28-02, ajustada en vivo por el usuario: automático,
+        // sin que el operador apriete nada -- solo en el alta inicial de
+        // la fila (no en cada corrección posterior, para no reimprimir de
+        // más mientras se ajustan datos). El botón "Imprimir remito" de
+        // la fila guardada (más abajo) queda para reimprimir a mano.
+        imprimirRemitoAutomatico(resultado.envio.numero);
         toast.success(`Encomienda ${guiaDeEnvio(resultado.envio)} cargada correctamente`);
       }
       actualizarFila(id, { status: "ok", resultado: resultado.envio, errorMsg: undefined });
@@ -546,6 +554,16 @@ export function CargaRapidaView({
                   >
                     <Copy className="size-3.5" />
                     Duplicar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 text-muted-foreground"
+                    onClick={() => abrirRemito(e.numero)}
+                  >
+                    <Printer className="size-3.5" />
+                    Imprimir remito
                   </Button>
                 </div>
               );
