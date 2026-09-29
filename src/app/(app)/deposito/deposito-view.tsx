@@ -157,6 +157,7 @@ function esTabDeEnvios(tab: TabKey): boolean {
 
 export function DepositoView({
   inicial,
+  errorInicial,
   localidades,
   sectores,
   usuarios,
@@ -164,6 +165,21 @@ export function DepositoView({
   tabInicial,
 }: {
   inicial: PaginaEnvios;
+  // BUG visto en vivo 2026-09-29: la carga inicial de "Pendientes"
+  // (`GET /consultas/envios`, ver page.tsx) se pedía sin atrapar el error
+  // -- a diferencia de TODO el resto de esta pantalla (buscar/cambiar de
+  // pestaña ya usa try/catch + toast, ver cargarEnvios/cargarFallidos/
+  // cargarConfirmaciones más abajo) y a diferencia de localidades/
+  // sectores/usuarios (que ya usan las variantes "Seguro"). Si el rol
+  // logueado no puede leer ese endpoint (o el backend responde cualquier
+  // otro error), un Server Component que tira sin atrapar rompe TODA la
+  // pantalla con la página genérica de error de Next.js ("This page
+  // couldn't load") en vez de mostrar el error real -- eso es lo que vio
+  // el usuario probando como operador. Ahora page.tsx atrapa ese error y
+  // lo manda acá como dato en vez de dejarlo escapar (mismo patrón
+  // `comoResultado` que ya usa el resto de la app para no perder el
+  // mensaje real del backend). Undefined = la carga inicial salió bien.
+  errorInicial?: { title: string; message: string };
   localidades: LocalidadBackend[];
   sectores: SectorApi[];
   usuarios: UsuarioApi[];
@@ -192,6 +208,17 @@ export function DepositoView({
   // Filtro propio de Confirmaciones pendientes.
   const [fechaConfirmaciones, setFechaConfirmaciones] = React.useState("");
   const [choferId, setChoferId] = React.useState("__todos");
+
+  // Mismo patrón que "errorInicial" de arriba: si la carga server-side de
+  // "Pendientes" falló, se avisa acá con el mensaje real del backend en
+  // vez de dejar la pestaña en blanco sin explicación. Un solo toast al
+  // montar (no en cada re-render).
+  React.useEffect(() => {
+    if (errorInicial) {
+      toast.error(errorInicial.title, { description: errorInicial.message });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const localidadNombre = React.useCallback(
     (id: string) => localidades.find((l) => l.id === id)?.nombre ?? "—",
