@@ -37,6 +37,9 @@ import type { EnvioApi } from "@/server/services/envios";
 import type { SectorApi } from "@/server/services/sectores";
 import type { UsuarioApi } from "@/server/services/usuarios";
 import type { LocalidadBackend } from "@/types";
+// TabKey/TABS viven en deposito-tabs.ts (sin "use client") porque page.tsx
+// necesita llamar a tabValida desde el server -- ver ese archivo.
+import { TABS, type TabKey } from "./deposito-tabs";
 
 // Pantalla real de Depósito (reemplaza la vieja pantalla 100% mock) —
 // contrato completo del equipo de backend, "Nota 1 — Pantalla de
@@ -106,37 +109,6 @@ const UBICACION_VARIANT: Record<string, BadgeVariant> = {
 // criterio ya confirmado y usado en custodia-view.tsx/nueva-view.tsx.
 function guiaDeEnvio(e: EnvioApi): string {
   return (e.guiaDiaria as string | undefined) || e.numero || e.id?.slice(0, 8) || "—";
-}
-
-export type TabKey =
-  | "pendientes"
-  | "en_transito"
-  | "para_entregar"
-  | "entregadas"
-  | "confirmadas"
-  | "anuladas"
-  | "fallidos"
-  | "confirmaciones";
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "pendientes", label: "Pendientes" },
-  { key: "en_transito", label: "En tránsito" },
-  { key: "para_entregar", label: "Para entregar" },
-  { key: "entregadas", label: "Entregadas" },
-  { key: "confirmadas", label: "Confirmadas" },
-  { key: "anuladas", label: "Anuladas" },
-  { key: "fallidos", label: "Fallidos" },
-  { key: "confirmaciones", label: "Conf. pendientes" },
-];
-
-// NOTA-2026-09-28-01 (opcion 1, landing por rol): administracion aterriza
-// directo en la pestaña "Conf. pendientes" (`/deposito?tab=confirmaciones`,
-// ver landing.ts). Hasta ahora `tab` era puro estado de React -- nunca leia
-// la URL -- asi que aterrizar ahi siempre mostraba "Pendientes" igual.
-// `tabValida` deja que page.tsx (Server Component, ve el query string)
-// valide el valor sin duplicar la lista de keys ahi.
-export function tabValida(valor: string | undefined): TabKey | undefined {
-  return TABS.some((t) => t.key === valor) ? (valor as TabKey) : undefined;
 }
 
 // Pestaña -> `estado` real que se pide a /consultas/envios. "en_transito" y

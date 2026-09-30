@@ -4,7 +4,8 @@ import { listLocalidadesSeguro } from "@/server/services/localidades";
 import { listSectoresSeguro } from "@/server/services/sectores";
 import { listUsuariosSeguro } from "@/server/services/usuarios";
 import { ApiError } from "@/server/api-client";
-import { DepositoView, tabValida } from "./deposito-view";
+import { DepositoView } from "./deposito-view";
+import { tabValida } from "./deposito-tabs";
 
 // Reemplaza a la vieja pantalla mock de Depósito (getEncomiendas/getPersonal,
 // modelo "Encomienda" que no existe en el backend real) — contrato completo
