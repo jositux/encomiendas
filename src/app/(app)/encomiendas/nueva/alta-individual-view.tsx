@@ -724,9 +724,11 @@ export function AltaIndividualView({
             </div>
           </div>
 
-          {/* Campos nuevos del changelog 2026-09-15, opcionales. "gasto"
-              mantiene el nombre viejo del backend — en la práctica es el
-              monto cobrado por billetera virtual/digital. */}
+          {/* Campos nuevos del changelog 2026-09-15, opcionales. "gasto" es
+              un cargo al cliente que cobra quien entrega (el legacy lo
+              asienta como GASTO COBRADO) — NO es el pago por billetera
+              virtual/digital, como decía este comentario y el label hasta
+              el 2026-10-01. */}
           <div className="grid gap-4 sm:grid-cols-3">
             {/* CONTRATO-2026-09-24-01 (punto 2): valor declarado solo vale
                 para "paqueteria" -- en efectivo lo que se declara es el
@@ -752,7 +754,7 @@ export function AltaIndividualView({
             {permiteGastoYFlete(tipo) && (
               <div className="grid gap-1.5">
                 <Label htmlFor="gasto" className="text-xs text-muted-foreground">
-                  Pago con billetera/digital ($, opcional)
+                  Gasto a cobrar en la entrega ($)
                 </Label>
                 <Input
                   id="gasto"
