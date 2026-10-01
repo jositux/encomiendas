@@ -1009,7 +1009,7 @@ export function CargaRapidaView({
                       {permiteGastoYFlete(fila.tipo) && (
                         <div className="grid gap-1.5">
                           <Label className="text-xs text-muted-foreground">
-                            Pago billetera/digital ($)
+                            Gasto a cobrar en la entrega ($)
                           </Label>
                           <Input
                             disabled={guardando}

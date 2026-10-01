@@ -261,7 +261,12 @@ function Panel({
           5492bd6) importes.aCobrar YA trae el contrarreembolso sumado --
           ese parche quedo redundante (coincidia con el valor correcto de
           casualidad) y ademas enmascaraba el campo real. Se saca en el
-          mismo deploy que el resto de los ajustes de este contrato. */}
+          mismo deploy que el resto de los ajustes de este contrato.
+          La regla cambio de nuevo el 2026-10-01 (backend main a9c2e6f): el
+          gasto lo cobra quien entrega, asi que con pago en origen cobrado
+          = flete y aCobrar = gasto + CRR (antes cobrado = flete + gasto).
+          Detalle por lugar de pago en RemitoApi (envios.ts). Aca no cambia
+          nada: los tres importes se pintan tal como llegan. */}
       <div className="grid grid-cols-3 gap-2 border-t pt-2 text-center print:border-black">
         <div>
           <p className="text-xs text-muted-foreground print:text-black">Cobrado</p>

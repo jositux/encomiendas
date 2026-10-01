@@ -52,9 +52,10 @@ export interface CrearEnvioInput {
   remitoManualNumero?: string;
   // Campos nuevos del changelog 2026-09-15 — confirmados por nombre real
   // porque ya aparecen tal cual en GET /envios/:numero/remito (RemitoApi,
-  // mas abajo). `gasto` mantiene el nombre viejo del backend: en la
-  // practica es el monto cobrado por billetera virtual/digital, no un
-  // "gasto" en el sentido contable.
+  // mas abajo). `gasto` es un cargo al cliente que cobra quien entrega
+  // (el legacy lo asienta como GASTO COBRADO) -- NO es el pago por
+  // billetera virtual/digital, como decia este comentario hasta el
+  // 2026-10-01.
   valorDeclarado?: number;
   gasto?: number;
   observaciones?: string;
@@ -290,6 +291,14 @@ export interface RemitoApi {
   // nullable (null solo con tipo "interno"), e importes.* ahora puede venir
   // null (= renglon en blanco en el papel del legacy) en vez de siempre
   // traer un string. Ver remito-view.tsx (money() y el bloque de "Pago:").
+  // Regla de importes desde el 2026-10-01 (backend main a9c2e6f, ver
+  // api/openapi.json de ese repo) -- el gasto lo cobra quien entrega, no
+  // el mostrador de origen:
+  //   destino -> cobrado null,  aCobrar = total = flete + gasto + CRR
+  //   origen  -> cobrado flete, aCobrar = gasto + CRR, total = flete + gasto + CRR
+  //   regreso -> cobrado null,  aCobrar = total = gasto + CRR
+  //   interno -> los tres null (y pagoServicio null)
+  // El frontend no calcula nada de esto: pinta los tres tal como llegan.
   pagoServicio: { lugar: LugarPagoApi; forma: FormaPagoApi } | null;
   importes: { cobrado: string | null; aCobrar: string | null; total: string | null };
   levanto: string;
