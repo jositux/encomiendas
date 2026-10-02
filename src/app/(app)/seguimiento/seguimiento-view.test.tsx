@@ -308,6 +308,157 @@ describe("Seguimiento — panel Modificar datos", () => {
   });
 });
 
+// 2026-10-02: quien tiene el envío en custodia fuera de su origen puede
+// modificarlo, salvo los importes. Lo dice el backend en `edicion.campos`.
+describe("Seguimiento — panel Modificar datos con campos = sin_importes", () => {
+  const SIN_IMPORTES = { permitida: true, bloqueo: null, campos: "sin_importes" as const };
+  const AVISO = "Los importes los modifica el origen antes del corte, supervisión o administración.";
+  const EDITORES_DE_IMPORTES = [
+    "mod-tipo",
+    "mod-lugar-pago",
+    "mod-forma-pago",
+    "mod-flete",
+    "mod-crr",
+    "mod-gasto",
+    "mod-valor-declarado",
+  ];
+
+  it("muestra los siete importes con su valor, sin ningún control para editarlos, y la línea que lo explica", async () => {
+    await abrirSeguimiento(seguimientoFixture({ edicion: SIN_IMPORTES }));
+    const panel = await abrirPanel();
+
+    for (const id of EDITORES_DE_IMPORTES) {
+      expect(document.querySelector(`#${id}`)).toBeNull();
+    }
+
+    const importes = within(panel).getByRole("group", { name: "Importes" });
+    const dato = (label: string) =>
+      texto(within(importes).getByText(label).nextElementSibling);
+    expect(dato("Tipo")).toBe("Paquetería");
+    expect(dato("Lugar de pago")).toBe("Origen");
+    expect(dato("Forma de pago")).toBe("Contado");
+    expect(dato("Flete")).toBe("$ 10.000");
+    expect(dato("Contra reembolso")).toBe("—");
+    expect(dato("Gasto a cobrar en la entrega")).toBe("$ 0");
+    expect(dato("Valor declarado")).toBe("$ 50.000");
+    expect(within(importes).getByText(AVISO)).toBeInTheDocument();
+  });
+
+  it("los otros quince campos se editan como siempre", async () => {
+    await abrirSeguimiento(seguimientoFixture({ edicion: SIN_IMPORTES }));
+    await abrirPanel();
+
+    for (const id of [
+      "mod-remitente-nombre",
+      "mod-remitente-telefono",
+      "mod-remitente-calle",
+      "mod-remitente-numero",
+      "mod-remitente-piso",
+      "mod-remitente-referencia",
+      "mod-destinatario-nombre",
+      "mod-destinatario-telefono",
+      "mod-destinatario-calle",
+      "mod-destinatario-numero",
+      "mod-destinatario-piso",
+      "mod-destinatario-referencia",
+      "mod-bultos",
+      "mod-remito-manual",
+      "mod-observaciones",
+    ]) {
+      expect(campo(id)).not.toBeDisabled();
+    }
+    expect(campo("mod-destinatario-telefono").value).toBe("3764-420014");
+    expect(campo("mod-bultos").value).toBe("2");
+  });
+
+  it("al guardar no viaja ningún importe", async () => {
+    await abrirSeguimiento(seguimientoFixture({ edicion: SIN_IMPORTES }));
+    const panel = await abrirPanel();
+    vi.mocked(modificarEnvioAction).mockResolvedValue({ ok: true, envio: envioFixture() });
+    vi.mocked(refrescarSeguimientoAction).mockResolvedValue({
+      ok: true,
+      data: seguimientoFixture({ edicion: SIN_IMPORTES }),
+    });
+
+    fireEvent.change(campo("mod-destinatario-telefono"), { target: { value: "3764-999999" } });
+    fireEvent.change(campo("mod-bultos"), { target: { value: "3" } });
+    fireEvent.change(campo("mod-motivo"), { target: { value: "teléfono mal cargado" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+
+    await waitFor(() => expect(modificarEnvioAction).toHaveBeenCalledTimes(1));
+    const [, cambios] = vi.mocked(modificarEnvioAction).mock.calls[0];
+    expect(cambios).toEqual({ destinatarioTelefono: "3764-999999", cantidadBultos: 3 });
+  });
+
+  it("funciona también sobre un envío cuyos importes no pasarían la validación del alta", async () => {
+    // Contra reembolso sin importe cargado: no es asunto de quien solo
+    // corrige un dato de contacto.
+    await abrirSeguimiento(
+      seguimientoFixture({
+        edicion: SIN_IMPORTES,
+        envio: { tipo: "efectivo", contrarreembolsoImporte: null, valorDeclarado: null },
+      })
+    );
+    const panel = await abrirPanel();
+    vi.mocked(modificarEnvioAction).mockResolvedValue({ ok: true, envio: envioFixture() });
+    vi.mocked(refrescarSeguimientoAction).mockResolvedValue({
+      ok: true,
+      data: seguimientoFixture({ edicion: SIN_IMPORTES }),
+    });
+
+    fireEvent.change(campo("mod-destinatario-telefono"), { target: { value: "3764-999999" } });
+    fireEvent.change(campo("mod-motivo"), { target: { value: "teléfono mal cargado" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+
+    await waitFor(() => expect(modificarEnvioAction).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(modificarEnvioAction).mock.calls[0][1]).toEqual({
+      destinatarioTelefono: "3764-999999",
+    });
+  });
+});
+
+describe("Seguimiento — panel Modificar datos con campos = todos, o sin el campo", () => {
+  it.each([
+    ["todos", { permitida: true, bloqueo: null, campos: "todos" as const }],
+    ["sin el campo (backend anterior)", { permitida: true, bloqueo: null }],
+  ])("%s: el panel deja editar los importes, como siempre", async (_nombre, edicion) => {
+    await abrirSeguimiento(seguimientoFixture({ edicion }));
+    const panel = await abrirPanel();
+
+    // Paquetería: flete, gasto y valor declarado editables; el contra
+    // reembolso no corresponde al tipo.
+    expect(campo("mod-flete").value).toBe("10000");
+    expect(campo("mod-gasto").value).toBe("0");
+    expect(campo("mod-valor-declarado").value).toBe("50000");
+    for (const id of ["mod-tipo", "mod-lugar-pago", "mod-forma-pago"]) {
+      expect(document.querySelector(`#${id}`)).not.toBeNull();
+    }
+    expect(within(panel).queryByRole("group", { name: "Importes" })).toBeNull();
+    expect(within(panel).queryByText(/Los importes los modifica el origen/)).toBeNull();
+  });
+
+  it("CAMPO_NO_PERMITIDO (403): muestra el detalle del backend y deja el panel abierto", async () => {
+    await abrirSeguimiento(seguimientoFixture({ edicion: PERMITIDA }));
+    const panel = await abrirPanel();
+    const detalle =
+      "No podés modificar flete: los importes los modifica el origen antes del corte, supervisión o administración.";
+    vi.mocked(modificarEnvioAction).mockResolvedValue({
+      ok: false,
+      code: "CAMPO_NO_PERMITIDO",
+      title: "Campo no permitido",
+      message: detalle,
+    });
+
+    fireEvent.change(campo("mod-flete"), { target: { value: "8000" } });
+    fireEvent.change(campo("mod-motivo"), { target: { value: "flete mal cargado" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(detalle);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(refrescarSeguimientoAction).not.toHaveBeenCalled();
+  });
+});
+
 describe("Seguimiento — historia de una modificación", () => {
   it("pinta la frase como llega y, en el detalle, etiquetas legibles, importes y el motivo", async () => {
     const frase =

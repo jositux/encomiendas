@@ -20,6 +20,7 @@ import type {
   LugarPagoApi,
   TipoEnvioApi,
 } from "@/server/services/envios";
+import type { CamposEditables } from "@/server/services/seguimiento";
 
 // Mismo piso y techo que valida el backend (ModificarEnvioDto.motivo),
 // contados después de recortar espacios.
@@ -39,6 +40,25 @@ export const CODIGOS_DE_BLOQUEO = [
   "FUERA_DE_ALCANCE",
   "ENVIO_CERRADO",
 ];
+
+// "Los importes": los siete campos del PATCH que definen qué se cobra y
+// cómo. Con `edicion.campos = "sin_importes"` (quien tiene el envío en
+// custodia fuera de su origen) el panel los muestra sin dejar editarlos y
+// NO viajan en el PATCH -- si viajara uno cambiado, el backend responde 403
+// CAMPO_NO_PERMITIDO y no aplica nada del pedido. Misma lista que el spec
+// del backend (2026-10-02-modificar-envio-en-custodia, §2).
+export const CAMPOS_DE_IMPORTES: (keyof CamposModificablesEnvio)[] = [
+  "fleteImporte",
+  "contrarreembolsoImporte",
+  "gasto",
+  "valorDeclarado",
+  "tipo",
+  "lugarPago",
+  "formaPago",
+];
+
+export const AVISO_IMPORTES_NO_EDITABLES =
+  "Los importes los modifica el origen antes del corte, supervisión o administración.";
 
 // Los 22 campos que acepta PATCH /envios/:id, en la forma en que se tipean.
 // Los importes siguen la convención del alta: número, o "" si está vacío.
@@ -161,14 +181,20 @@ export function valoresParaPatch(form: FormModificarEnvio): ValoresPatch {
 
 // Solo los campos que cambiaron respecto del envío tal como se cargó en el
 // panel. Un objeto vacío = no hay nada para guardar.
+//
+// Con `campos = "sin_importes"` los siete importes quedan afuera pase lo
+// que pase con el formulario: ni un valor tipeado ni un efecto colateral de
+// las reglas por tipo puede hacer que viajen.
 export function cambiosDelFormulario(
   inicial: FormModificarEnvio,
-  actual: FormModificarEnvio
+  actual: FormModificarEnvio,
+  campos: CamposEditables = "todos"
 ): CamposModificablesEnvio {
   const antes = valoresParaPatch(inicial);
   const despues = valoresParaPatch(actual);
   const cambios: Record<string, unknown> = {};
   for (const campo of Object.keys(despues) as (keyof ValoresPatch)[]) {
+    if (campos === "sin_importes" && CAMPOS_DE_IMPORTES.includes(campo)) continue;
     if (antes[campo] !== despues[campo]) cambios[campo] = despues[campo];
   }
   return cambios as CamposModificablesEnvio;
@@ -189,7 +215,11 @@ const TEXTOS_OBLIGATORIOS: { campo: keyof FormModificarEnvio; mensaje: string }[
 export function validarFormulario(
   inicial: FormModificarEnvio,
   actual: FormModificarEnvio,
-  motivo: string
+  motivo: string,
+  // Con "sin_importes" los importes no se validan: no se pueden editar ni
+  // viajan, así que un importe del envío que hoy no pasaría la validación
+  // del alta no puede trabar la corrección de un teléfono.
+  campos: CamposEditables = "todos"
 ): Record<string, string> {
   const errores: Record<string, string> = {};
 
@@ -201,17 +231,19 @@ export function validarFormulario(
   const bultosCheck = bultosSchema.safeParse(actual.bultos);
   if (!bultosCheck.success) errores.bultos = bultosCheck.error.issues[0].message;
 
-  if (permiteGastoYFlete(actual.tipo)) {
+  const validaImportes = campos !== "sin_importes";
+
+  if (validaImportes && permiteGastoYFlete(actual.tipo)) {
     const fleteCheck = montoNoNegativoSchema.safeParse(actual.flete === "" ? 0 : actual.flete);
     if (!fleteCheck.success) errores.flete = fleteCheck.error.issues[0].message;
     const gastoCheck = montoNoNegativoSchema.safeParse(actual.gasto === "" ? 0 : actual.gasto);
     if (!gastoCheck.success) errores.gasto = gastoCheck.error.issues[0].message;
   }
-  if (permiteContrarreembolso(actual.tipo)) {
+  if (validaImportes && permiteContrarreembolso(actual.tipo)) {
     const crrCheck = montoPositivoSchema.safeParse(actual.montoCrr === "" ? 0 : actual.montoCrr);
     if (!crrCheck.success) errores.montoCrr = crrCheck.error.issues[0].message;
   }
-  if (permiteValorDeclarado(actual.tipo) && actual.valorDeclarado !== "") {
+  if (validaImportes && permiteValorDeclarado(actual.tipo) && actual.valorDeclarado !== "") {
     const vdCheck = montoNoNegativoSchema.safeParse(actual.valorDeclarado);
     if (!vdCheck.success) errores.valorDeclarado = vdCheck.error.issues[0].message;
   }

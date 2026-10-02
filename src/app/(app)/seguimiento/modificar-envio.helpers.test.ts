@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EnvioApi } from "@/server/services/envios";
 import {
+  CAMPOS_DE_IMPORTES,
   MOTIVO_MAX,
   cambiosDelFormulario,
   conTipo,
@@ -170,5 +171,93 @@ describe("validarFormulario", () => {
   it("no obliga a completar un teléfono que el envío ya no tenía", () => {
     const inicial = form({ destinatarioTelefono: "" });
     expect(validarFormulario(inicial, { ...inicial, flete: 8000 }, "flete mal cargado")).toEqual({});
+  });
+});
+
+// 2026-10-02: quien tiene el envío en custodia fuera de su origen modifica
+// todo menos los importes (`edicion.campos = "sin_importes"`).
+describe("con campos = sin_importes", () => {
+  it("los importes son los siete campos que definen qué se cobra y cómo", () => {
+    expect([...CAMPOS_DE_IMPORTES].sort()).toEqual([
+      "contrarreembolsoImporte",
+      "fleteImporte",
+      "formaPago",
+      "gasto",
+      "lugarPago",
+      "tipo",
+      "valorDeclarado",
+    ]);
+  });
+
+  it("los otros quince campos viajan como siempre", () => {
+    const inicial = form();
+    const actual = {
+      ...inicial,
+      destinatarioTelefono: "3764-999999",
+      remitenteReferencia: "portón negro",
+      bultos: 3,
+      remitoManual: "77",
+      observaciones: "",
+    };
+    expect(cambiosDelFormulario(inicial, actual, "sin_importes")).toEqual({
+      destinatarioTelefono: "3764-999999",
+      remitenteReferencia: "portón negro",
+      cantidadBultos: 3,
+      remitoManualNumero: "000077",
+      observaciones: null,
+    });
+  });
+
+  it("ningún importe viaja, aunque el formulario lo traiga cambiado", () => {
+    const inicial = form();
+    const actual = {
+      ...inicial,
+      flete: 8000 as const,
+      gasto: 500 as const,
+      valorDeclarado: "" as const,
+      montoCrr: 100 as const,
+      lugarPago: "destino" as const,
+      formaPago: "cuenta_corriente" as const,
+      destinatarioNombre: "Farmacia Centro",
+    };
+    expect(cambiosDelFormulario(inicial, actual, "sin_importes")).toEqual({
+      destinatarioNombre: "Farmacia Centro",
+    });
+    // Con "todos" esos mismos cambios sí viajan.
+    expect(Object.keys(cambiosDelFormulario(inicial, actual, "todos")).sort()).toEqual([
+      "destinatarioNombre",
+      "fleteImporte",
+      "formaPago",
+      "gasto",
+      "lugarPago",
+      "valorDeclarado",
+    ]);
+  });
+
+  it("un cambio de tipo, con todo lo que limpia por efecto colateral, tampoco viaja", () => {
+    const inicial = form();
+    const actual = { ...conTipo(inicial, "interno"), destinatarioPiso: "2 B" };
+    expect(cambiosDelFormulario(inicial, actual, "sin_importes")).toEqual({
+      destinatarioPiso: "2 B",
+    });
+  });
+
+  it("no valida los importes: uno que hoy no pasaría el alta no traba la corrección", () => {
+    // Contra reembolso sin importe: con "todos" es un error del formulario.
+    const inicial = form({ tipo: "efectivo", contrarreembolsoImporte: null, valorDeclarado: null });
+    const actual = { ...inicial, destinatarioTelefono: "3764-999999" };
+    expect(validarFormulario(inicial, actual, "teléfono mal cargado").montoCrr).toBeTruthy();
+    expect(validarFormulario(inicial, actual, "teléfono mal cargado", "sin_importes")).toEqual({});
+  });
+
+  it("el motivo y los datos obligatorios se siguen exigiendo", () => {
+    const inicial = form();
+    const errores = validarFormulario(
+      inicial,
+      { ...inicial, destinatarioNombre: "" },
+      "",
+      "sin_importes"
+    );
+    expect(Object.keys(errores).sort()).toEqual(["destinatarioNombre", "motivo"]);
   });
 });
