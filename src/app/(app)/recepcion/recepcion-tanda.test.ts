@@ -154,6 +154,56 @@ describe("cómo se clasifica cada resultado", () => {
     });
   });
 
+  it("un cambio de sector que de paso borró una reserva de recorrido: aviso, y lo dice", () => {
+    const r = resultadoDeRespuesta(
+      lectura(SECTOR),
+      respuesta({
+        asignacion: {
+          tipo: "sector",
+          aplicada: true,
+          anterior: { id: "s0", nombre: "Sur" },
+          reservaQuitada: { id: "rec-moto", nombre: "Posadas Moto" },
+        },
+      })
+    );
+    expect(r).toMatchObject({
+      tono: "aviso",
+      titulo: "Recibido · sector Centro · se quitó la reserva de Posadas Moto",
+    });
+
+    const yaLoTenia = resultadoDeRespuesta(
+      lectura(SECTOR),
+      respuesta({
+        recepcion: "ya_en_custodia",
+        asignacion: {
+          tipo: "sector",
+          aplicada: true,
+          anterior: { id: "s0", nombre: "Sur" },
+          reservaQuitada: { id: "rec-moto", nombre: "Posadas Moto" },
+        },
+      })
+    );
+    expect(yaLoTenia).toMatchObject({
+      tono: "aviso",
+      titulo: "Sector cambiado a Centro · se quitó la reserva de Posadas Moto",
+    });
+  });
+
+  it("con reservaQuitada null (no había reserva) el cambio de sector sigue siendo correcto", () => {
+    const r = resultadoDeRespuesta(
+      lectura(SECTOR),
+      respuesta({
+        asignacion: {
+          tipo: "sector",
+          aplicada: true,
+          anterior: { id: "s0", nombre: "Sur" },
+          reservaQuitada: null,
+        },
+      })
+    );
+    expect(r).toMatchObject({ tono: "correcto", titulo: "Recibido · sector Centro" });
+  });
+
   it("un paquete que ya tenía, con el cambio aplicado: correcto (es lo que se buscaba)", () => {
     const r = resultadoDeRespuesta(
       lectura(SECTOR),

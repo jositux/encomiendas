@@ -538,6 +538,57 @@ describe("Recepción — resumen, deshacer y la tanda guardada", () => {
     expect(screen.queryByRole("button", { name: /Deshacer/ })).toBeNull();
   });
 
+  it("un cambio de sector que borró una reserva: aviso en el bloque y en la fila, y al deshacer dice que no se restauró", async () => {
+    vi.mocked(procesarLecturaAction)
+      .mockResolvedValueOnce(
+        ok("000000009-3", {
+          asignacion: {
+            tipo: "sector",
+            aplicada: true,
+            anterior: { id: "sec-villa", nombre: "Villa Cabello" },
+            reservaQuitada: { id: "rec-moto", nombre: "Posadas Moto" },
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        ok("000000009-3", {
+          recepcion: undefined,
+          asignacion: {
+            tipo: "sector",
+            aplicada: true,
+            anterior: { id: "sec-centro", nombre: "Centro" },
+            reservaQuitada: null,
+          },
+        })
+      );
+    renderRecepcion();
+    elegirSector("sec-centro");
+    escanear("000000009-3");
+
+    const texto = "Recibido · sector Centro · se quitó la reserva de Posadas Moto";
+    await waitFor(() => expect(ultimo()).toHaveTextContent(texto));
+    expect(ultimo()).toHaveAttribute("data-tono", "aviso");
+    expect(filas()[0]).toHaveAttribute("data-tono", "aviso");
+    expect(filas()[0]).toHaveTextContent(texto);
+    expect(sonar).toHaveBeenCalledWith("aviso");
+    expect(sonar).not.toHaveBeenCalledWith("correcto");
+    const resumen = screen.getByLabelText("Resumen de la tanda");
+    expect(within(resumen).getByText("Con aviso").nextElementSibling?.textContent).toBe("1");
+
+    fireEvent.click(screen.getByRole("button", { name: /Deshacer/ }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          /Asignación deshecha: volvió a Villa Cabello\.\s*La reserva de Posadas Moto no se restauró\./
+        )
+      ).toBeInTheDocument()
+    );
+    // La fila deshecha sigue diciendo qué pasó con la reserva.
+    expect(filas()[0]).toHaveTextContent("se quitó la reserva de Posadas Moto");
+    expect(llamadas()[1]).toMatchObject({ asignacion: { sectorId: "sec-villa" }, soloAsignar: true });
+  });
+
   it("Deshacer una reserva que no tenía anterior la quita (recorridoId null)", async () => {
     vi.mocked(procesarLecturaAction)
       .mockResolvedValueOnce(ok("000000009-3", { asignacion: { tipo: "recorrido", aplicada: true, anterior: null } }))

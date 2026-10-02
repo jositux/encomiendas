@@ -122,6 +122,7 @@ export function HistorialDeTanda({
         const { resultado } = lectura;
         const envio = resultado?.envio;
         const anterior = resultado?.asignacion?.anterior;
+        const reservaQuitada = resultado?.asignacion?.reservaQuitada;
         return (
           <li
             key={lectura.id}
@@ -147,6 +148,9 @@ export function HistorialDeTanda({
                 <p className="text-xs text-muted-foreground">
                   Asignación deshecha
                   {anterior ? `: volvió a ${anterior.nombre}` : ": quedó sin reserva"}.
+                  {/* Deshacer el cambio de sector no devuelve la reserva
+                      de recorrido que ese cambio había borrado. */}
+                  {reservaQuitada && ` La reserva de ${reservaQuitada.nombre} no se restauró.`}
                 </p>
               )}
             </div>

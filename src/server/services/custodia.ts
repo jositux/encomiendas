@@ -447,6 +447,11 @@ export interface AsignacionApi {
   anterior: IdYNombre | null;
   codigo?: string;
   mensaje?: string;
+  // Cambiar el sector borra la reserva de recorrido que el envío tuviera.
+  // Viene con el recorrido que se quitó solo en ese caso (cambio de sector
+  // aplicado sobre un envío reservado); null en cualquier otro. Deshacer
+  // el cambio de sector no la restaura.
+  reservaQuitada?: IdYNombre | null;
 }
 
 export interface RespuestaDeRecepcion {

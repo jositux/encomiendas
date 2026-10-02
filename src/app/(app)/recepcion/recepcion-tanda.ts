@@ -141,7 +141,9 @@ function nombreAsignado(lectura: Lectura): string {
 // Qué pasó con una lectura, en palabras y con su tono:
 // - correcto: se hizo lo que el modo pedía.
 // - aviso:    el paquete está, pero no pasó lo esperado -- ya lo tenías
-//             (en "Sólo recibir"), o se recibió y el cambio no se aplicó.
+//             (en "Sólo recibir"), se recibió y el cambio no se aplicó, o
+//             el cambio de sector se aplicó pero de paso borró una reserva
+//             de recorrido (un efecto que el operador no pidió).
 // - error:    no se hizo nada -- no encontrado, rechazado, sin respuesta.
 export function resultadoDeRespuesta(
   lectura: Lectura,
@@ -173,15 +175,15 @@ export function resultadoDeRespuesta(
       : `reservado para ${nombreAsignado(lectura)}`;
 
   if (asignacion.aplicada) {
-    return {
-      ...base,
-      tono: "correcto",
-      titulo: recibio
-        ? `Recibido · ${hecho}`
-        : asignacion.tipo === "sector"
-          ? `Sector cambiado a ${nombreAsignado(lectura)}`
-          : `Reservado para ${nombreAsignado(lectura)}`,
-    };
+    const titulo = recibio
+      ? `Recibido · ${hecho}`
+      : asignacion.tipo === "sector"
+        ? `Sector cambiado a ${nombreAsignado(lectura)}`
+        : `Reservado para ${nombreAsignado(lectura)}`;
+    const quitada = asignacion.reservaQuitada;
+    return quitada
+      ? { ...base, tono: "aviso", titulo: `${titulo} · se quitó la reserva de ${quitada.nombre}` }
+      : { ...base, tono: "correcto", titulo };
   }
 
   const sinCambio =
