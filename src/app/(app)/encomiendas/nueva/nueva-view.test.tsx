@@ -25,7 +25,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-import { crearEnvioAction, searchClientesAction } from "@/server/actions";
+import { actualizarEnvioAction, crearEnvioAction, searchClientesAction } from "@/server/actions";
 import { toast } from "sonner";
 import { NuevaEncomiendaView } from "./nueva-view";
 import type { LocalidadBackend, SesionUsuario } from "@/types";
@@ -149,7 +149,10 @@ describe("NuevaEncomiendaView - modo Individual", () => {
     expect(toast.success).toHaveBeenCalledTimes(1);
     // resetForm() se llama tras el éxito: el campo vuelve a quedar vacío.
     expect((container.querySelector("#origen-nombre") as HTMLInputElement).value).toBe("");
-  });
+    // 15 s de límite: es el primer test del archivo (paga el arranque del
+    // módulo) y tipea letra por letra. Tarda ~4 s y con los 5 s por defecto
+    // se caía por tiempo cuando la suite completa corre en paralelo.
+  }, 15_000);
 
   it("no envía nada y muestra los errores si faltan campos obligatorios", async () => {
     const user = userEvent.setup();
@@ -194,6 +197,33 @@ describe("NuevaEncomiendaView - modo Carga rápida", () => {
     expect(data.destinatario.localidadId).toBe("loc-1");
     expect(toast.success).toHaveBeenCalledTimes(1);
   });
+
+  // 2026-10-01: PATCH /envios/:id exige `motivo`. Corregir una fila recién
+  // guardada no le pide nada al operador: manda un motivo fijo.
+  it('"Editar" sobre un destino ya guardado lo corrige con el motivo automático', async () => {
+    const user = userEvent.setup();
+    vi.mocked(crearEnvioAction).mockResolvedValue({ ok: true, envio: envioFixture() });
+    vi.mocked(actualizarEnvioAction).mockResolvedValue({ ok: true, envio: envioFixture() });
+    renderView();
+
+    await user.click(screen.getByRole("button", { name: "Carga rápida" }));
+    await user.type(screen.getByPlaceholderText(PLACEHOLDER_NOMBRE), "Juan Perez");
+    await user.type(inputJuntoALabel("Teléfono"), "3755000000");
+    await user.click(screen.getByRole("button", { name: "Confirmar remitente" }));
+    await user.click(screen.getByRole("button", { name: "Agregar destino" }));
+    await user.type(screen.getByPlaceholderText(PLACEHOLDER_NOMBRE), "Maria Lopez");
+    await user.type(inputJuntoALabel("Calle"), "San Martin 123");
+    await user.click(screen.getByRole("button", { name: "Guardar destino" }));
+
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await user.click(screen.getByRole("button", { name: "Guardar corrección" }));
+
+    expect(crearEnvioAction).toHaveBeenCalledTimes(1);
+    expect(actualizarEnvioAction).toHaveBeenCalledTimes(1);
+    const [envioId, , motivo] = vi.mocked(actualizarEnvioAction).mock.calls[0];
+    expect(envioId).toBe("id-envio-test");
+    expect(motivo).toBe("Corrección durante la carga rápida");
+  }, 15_000);
 
   it("no deja guardar un destino sin nombre ni calle", async () => {
     const user = userEvent.setup();

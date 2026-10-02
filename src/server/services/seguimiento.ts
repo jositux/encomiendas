@@ -53,12 +53,14 @@ export type TipoEvento =
   // custodia. `detalle.cambios` viene como
   // { columna: { antes, despues }, ... } (valores numeric como string,
   // nunca float) — la propia `evento.frase` ya trae la oración armada
-  // ("Flete corregido de 10000.00 a 8000.00 por Ana"), así que no hace
-  // falta reconstruir nada a mano para el resumen de una línea. Todavía
-  // no hay forma de generar uno de estos en vivo desde este frontend: el
-  // único PATCH /envios/:id real lo va a hacer la futura edición real vía
-  // Carga rápida (bug 10 punto 5 / changelog en el plan de integración),
-  // que a la fecha de este comentario sigue sin implementarse.
+  // ("Flete corregido de $ 10.000 a $ 8.000 por Ana. Motivo: …", con los
+  // importes ya formateados desde el 2026-10-01), así que no hace falta
+  // reconstruir nada a mano para el resumen de una línea. `detalle` trae
+  // además `motivo`. Las claves de `cambios` son la columna en snake_case
+  // (`flete_importe`) y los valores van crudos ("10000.00"): el detalle
+  // desplegado los traduce y formatea en seguimiento-view.tsx. Lo generan
+  // el panel "Modificar datos" de Seguimiento y el "Editar" de Carga
+  // rápida.
   | "modificacion";
 
 export interface EventoSeguimiento {
@@ -80,6 +82,18 @@ export interface EventoSeguimiento {
   detalle: Record<string, unknown>;
 }
 
+// 2026-10-01 (modificar desde Seguimiento): si el usuario que consulta puede
+// modificar los datos del envio lo decide el backend, y lo informa aca. El
+// frontend NO recalcula la regla: `permitida` muestra el boton "Modificar
+// datos"; `bloqueo` muestra su `mensaje` (escrito por el backend) como aviso
+// en lugar del boton; sin ninguno de los dos no se muestra nada (p. ej. un
+// chofer, que no tiene el permiso). Codigos de bloqueo: ENVIO_EN_PLANILLA,
+// ENVIO_EN_CUSTODIA, FUERA_DE_ALCANCE, ENVIO_CERRADO.
+export interface EdicionEnvio {
+  permitida: boolean;
+  bloqueo: { codigo: string; mensaje: string } | null;
+}
+
 export interface SeguimientoResponse {
   envio: EnvioApi & { etiquetas: string[] };
   custodiaActual: {
@@ -87,6 +101,9 @@ export interface SeguimientoResponse {
     punto: EventoPunto | null;
   };
   eventos: EventoSeguimiento[];
+  // Opcional: un backend anterior al 2026-10-01 no lo manda, y eso se trata
+  // igual que "sin permiso" (no se muestra ni boton ni aviso).
+  edicion?: EdicionEnvio;
 }
 
 export async function getSeguimiento(numero: string): Promise<SeguimientoResponse> {

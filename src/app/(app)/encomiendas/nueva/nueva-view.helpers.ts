@@ -236,6 +236,12 @@ export function filaDuplicada(origen: FilaDestino): FilaDestino {
   };
 }
 
+// 2026-10-01: PATCH /envios/:id exige `motivo`. El "Editar" de Carga rápida
+// corrige una fila que el mismo operador acaba de guardar, así que manda
+// este motivo fijo en vez de pedírselo — queda en el evento `modificacion`
+// de la historia del envío.
+export const MOTIVO_CARGA_RAPIDA = "Corrección durante la carga rápida";
+
 export function validarFila(f: FilaDestino): Record<string, string> {
   const next: Record<string, string> = {};
   if (!f.destino.nombre.trim()) next.nombre = "Ingresá el destinatario.";

@@ -4,7 +4,11 @@ import * as enviosService from "../services/envios";
 import * as clientesService from "../services/clientes";
 import { revalidateAll } from "./shared";
 import { ApiError } from "../api-client";
-import type { CrearEnvioInput, ActualizarEnvioInput } from "../services/envios";
+import type {
+  CrearEnvioInput,
+  ActualizarEnvioInput,
+  CamposModificablesEnvio,
+} from "../services/envios";
 
 // -- Envíos (Nueva Encomienda, API real) -------------------------------------------
 // Real (src/server/services/envios.ts).
@@ -65,15 +69,19 @@ export async function crearEnvioAction(
 // un rechazo de negocio del backend (ej. 400 sin clientUuid, aunque esta
 // accion siempre lo manda; o 409 CLIENT_UUID_REUTILIZADO si algun dia se
 // reintenta a mano con el mismo uuid) en vez de una excepcion sin manejar.
+//
+// 2026-10-01: el PATCH exige `motivo`. Carga rapida manda uno fijo (ver
+// MOTIVO_CARGA_RAPIDA en nueva-view.helpers.ts), sin pedirselo al operador.
 export async function actualizarEnvioAction(
   id: string,
-  data: ActualizarEnvioInput
+  data: ActualizarEnvioInput,
+  motivo: string
 ): Promise<
   | { ok: true; envio: Awaited<ReturnType<typeof enviosService.actualizarEnvio>> }
   | { ok: false; code: string; title: string; message: string }
 > {
   try {
-    const item = await enviosService.actualizarEnvio(id, data);
+    const item = await enviosService.actualizarEnvio(id, data, motivo);
     revalidateAll();
     return { ok: true, envio: item };
   } catch (err) {
@@ -83,6 +91,33 @@ export async function actualizarEnvioAction(
       // no podia distinguir un 400 REGLA_DE_TIPO (donde hay que mostrar
       // err.message, el detail real) de cualquier otro rechazo (donde
       // err.title sigue siendo lo que se muestra).
+      return { ok: false, code: err.code, title: err.title, message: err.message };
+    }
+    throw err;
+  }
+}
+
+// PATCH /envios/:id desde el panel "Modificar datos" de Seguimiento: manda
+// solo los campos que cambiaron (ya en el wire format plano), el motivo y
+// el `clientUuid` que el panel genero al abrirse. `code` va aparte para que
+// el panel distinga REGLA_DE_TIPO (se muestra `message`, el detail real) y
+// los bloqueos (ENVIO_EN_PLANILLA, ENVIO_EN_CUSTODIA, FUERA_DE_ALCANCE,
+// ENVIO_CERRADO: el envio cambio de situacion con el panel abierto) de
+// cualquier otro rechazo.
+export async function modificarEnvioAction(
+  id: string,
+  cambios: CamposModificablesEnvio,
+  opciones: { motivo: string; clientUuid: string }
+): Promise<
+  | { ok: true; envio: Awaited<ReturnType<typeof enviosService.modificarEnvio>> }
+  | { ok: false; code: string; title: string; message: string }
+> {
+  try {
+    const item = await enviosService.modificarEnvio(id, cambios, opciones);
+    revalidateAll();
+    return { ok: true, envio: item };
+  } catch (err) {
+    if (err instanceof ApiError) {
       return { ok: false, code: err.code, title: err.title, message: err.message };
     }
     throw err;

@@ -55,6 +55,7 @@ import {
   permiteValorDeclarado,
   permiteGastoYFlete,
   permiteElegirFormaPago,
+  MOTIVO_CARGA_RAPIDA,
   emptyOrigen,
   guiaDeEnvio,
   filaEnBlanco,
@@ -217,7 +218,7 @@ export function CargaRapidaView({
       };
 
       const resultado = esEdicion
-        ? await actualizarEnvioAction(fila.resultado!.id, datosComunes)
+        ? await actualizarEnvioAction(fila.resultado!.id, datosComunes, MOTIVO_CARGA_RAPIDA)
         : await crearEnvioAction(datosComunes as CrearEnvioInput);
 
       if (!resultado.ok) {
