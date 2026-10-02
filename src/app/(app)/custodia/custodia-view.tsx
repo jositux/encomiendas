@@ -60,7 +60,9 @@ export function opcionesDePersona(
   alcance: PaginaDeEnviosEnCustodia["alcance"],
   custodios: CustodioApi[],
   usuarioId: string,
-  seleccion: string
+  seleccion: string,
+  // `total` de la lista sin filtro: es el número de "Todos".
+  totalSinFiltro: number
 ): OpcionDePersona[] {
   if (alcance === "propio") return [];
 
@@ -78,8 +80,7 @@ export function opcionesDePersona(
       ...custodios.filter((c) => c.usuario.id !== usuarioId).map(persona),
     ];
   } else {
-    const total = custodios.reduce((suma, c) => suma + c.cantidad, 0);
-    opciones = [{ value: "", label: `Todos (${total})` }, ...custodios.map(persona)];
+    opciones = [{ value: "", label: `Todos (${totalSinFiltro})` }, ...custodios.map(persona)];
   }
 
   // Una persona elegida por URL que hoy no tiene nada no figura entre los
@@ -93,6 +94,7 @@ export function opcionesDePersona(
 export function CustodiaView({
   envios,
   custodios,
+  totalSinFiltro,
   localidades,
   usuarioId,
   seleccion,
@@ -101,6 +103,8 @@ export function CustodiaView({
   // null solo cuando el backend rechazó el pedido (ver `error`).
   envios: PaginaDeEnviosEnCustodia | null;
   custodios: CustodioApi[];
+  // Total de la lista sin filtro de persona (el "Todos (n)" del selector).
+  totalSinFiltro: number;
   localidades: LocalidadBackend[];
   usuarioId: string;
   // El valor de `?persona=`: "", "mios" o el id de una persona.
@@ -139,7 +143,7 @@ export function CustodiaView({
   }
 
   const { datos, total, limite, offset, alcance } = envios;
-  const opciones = opcionesDePersona(alcance, custodios, usuarioId, seleccion);
+  const opciones = opcionesDePersona(alcance, custodios, usuarioId, seleccion, totalSinFiltro);
   const soloLoMio = alcance === "propio" || seleccion === PERSONA_MIOS;
   const pagina = Math.floor(offset / limite) + 1;
   const desde = total === 0 ? 0 : offset + 1;

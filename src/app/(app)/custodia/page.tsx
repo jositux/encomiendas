@@ -51,18 +51,26 @@ export default async function CustodiaPage({
   // vuelta a la lista sin filtro, en vez de la página de error genérica.
   let envios: PaginaDeEnviosEnCustodia | null = null;
   let custodios: CustodioApi[] = [];
+  let totalSinFiltro = 0;
   let error: { title: string; message: string } | undefined;
   try {
-    const [paginaDeEnvios, personas] = await Promise.all([
+    const [paginaDeEnvios, personas, sinFiltro] = await Promise.all([
       listEnviosEnCustodia({
         usuarioId: custodioId || undefined,
         limite: TAMANO_DE_PAGINA,
         offset: (numeroDePagina - 1) * TAMANO_DE_PAGINA,
       }),
       listCustodios(),
+      // El "Todos (n)" del selector es el `total` de la lista SIN filtro, no
+      // la suma de las cantidades por persona (que se queda corta si hay
+      // más custodios que los que entran en una página de /custodios). Con
+      // una persona elegida ese total no viene en la página pedida: se pide
+      // aparte, con una sola fila.
+      custodioId ? listEnviosEnCustodia({ limite: 1 }) : null,
     ]);
     envios = paginaDeEnvios;
     custodios = personas.datos;
+    totalSinFiltro = (sinFiltro ?? paginaDeEnvios).total;
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
     error = { title: err.title, message: err.message };
@@ -72,6 +80,7 @@ export default async function CustodiaPage({
     <CustodiaView
       envios={envios}
       custodios={custodios}
+      totalSinFiltro={totalSinFiltro}
       localidades={localidades}
       usuarioId={usuarioId}
       seleccion={seleccion}

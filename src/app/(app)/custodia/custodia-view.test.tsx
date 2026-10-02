@@ -64,6 +64,7 @@ function renderView(
     <CustodiaView
       envios={envios}
       custodios={CUSTODIOS}
+      totalSinFiltro={envios?.total ?? 0}
       localidades={LOCALIDADES}
       usuarioId={YO}
       seleccion=""
@@ -95,6 +96,18 @@ describe("Custodia — el selector depende del alcance que informa el backend", 
     expect(selector()?.selectedOptions[0].textContent).toBe("Todos (10)");
   });
 
+  it("Todos (n) es el total de la lista sin filtro, no la suma de las cantidades por persona", () => {
+    // 3 + 5 + 2 = 10 entre las personas listadas, pero la lista tiene 240.
+    renderView(pagina({ alcance: "todo", total: 240 }));
+    expect(opciones()?.[0]).toBe("Todos (240)");
+  });
+
+  it("con una persona elegida, Todos (n) sigue mostrando el total sin filtro", () => {
+    renderView(pagina({ alcance: "todo", total: 5 }), { seleccion: "u-luis", totalSinFiltro: 240 });
+    expect(opciones()?.[0]).toBe("Todos (240)");
+    expect(screen.getByText("5 envíos en custodia")).toBeInTheDocument();
+  });
+
   it("refleja en el selector la persona que vino en la URL", () => {
     renderView(pagina({ alcance: "todo" }), { seleccion: "u-luis" });
     expect(selector()?.selectedOptions[0].textContent).toBe("Luis (5)");
@@ -107,7 +120,7 @@ describe("Custodia — el selector depende del alcance que informa el backend", 
   });
 
   it("una persona de la URL que hoy no tiene nada igual figura en el selector", () => {
-    expect(opcionesDePersona("todo", CUSTODIOS, YO, "u-nadie").at(-1)).toEqual({
+    expect(opcionesDePersona("todo", CUSTODIOS, YO, "u-nadie", 10).at(-1)).toEqual({
       value: "u-nadie",
       label: "Persona sin envíos (0)",
     });
