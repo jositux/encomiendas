@@ -279,7 +279,15 @@ export interface RemitoApi {
   origen: { localidad: string };
   destino: { localidad: string };
   remitente: { nombre: string; telefono: string; domicilio: string };
-  destinatario: { nombre: string; telefono: string; domicilio: string };
+  // `referencia` (del domicilio, solo destinatario): opcional hasta que el
+  // backend que la manda este desplegado -- despues viene siempre, string
+  // o null. El remitente no la tiene.
+  destinatario: {
+    nombre: string;
+    telefono: string;
+    domicilio: string;
+    referencia?: string | null;
+  };
   cantidadBultos: number;
   tipo: TipoEnvioApi;
   observaciones: string | null;
