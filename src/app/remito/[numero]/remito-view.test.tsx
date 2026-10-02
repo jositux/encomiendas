@@ -76,3 +76,23 @@ describe("RemitoView — referencia del domicilio del destinatario", () => {
     }
   });
 });
+
+describe("RemitoView — guía diaria", () => {
+  it("imprime la guía junto al remito manual", () => {
+    render(<RemitoView remito={{ ...remito(), remitoManualNumero: "000123" }} />);
+    expect(screen.getAllByText("Guía 1 · Remito manual 000123")).toHaveLength(2);
+  });
+
+  it("sin guía asignada no imprime \"Guía\" suelto ni \"null\"", () => {
+    const { container } = render(
+      <RemitoView remito={{ ...remito(), guiaDiaria: null, remitoManualNumero: "000123" }} />
+    );
+    expect(screen.getAllByText("Remito manual 000123")).toHaveLength(2);
+    expect(container.textContent).not.toMatch(/Guía|null/);
+  });
+
+  it("sin guía ni remito manual no deja el renglón", () => {
+    const { container } = render(<RemitoView remito={{ ...remito(), guiaDiaria: null }} />);
+    expect(container.textContent).not.toMatch(/Guía|Remito manual|null/);
+  });
+});

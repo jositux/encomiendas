@@ -23,6 +23,9 @@ import {
   User,
   Tag,
   Clock,
+  Lock,
+  Printer,
+  Store,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -50,6 +53,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { formatImporte } from "@/lib/format";
+import {
+  TIPOS,
+  LUGARES_PAGO,
+  FORMAS_PAGO,
+} from "@/app/(app)/encomiendas/nueva/nueva-view.helpers";
+import { abrirRemito } from "@/app/(app)/encomiendas/nueva/imprimir-remito";
+import { ModificarEnvioPanel } from "./modificar-envio-panel";
 import {
   buscarSeguimientoAction,
   refrescarSeguimientoAction,
@@ -124,6 +135,62 @@ const DETALLE_LABEL: Record<string, string> = {
   a: "A",
   planillaDe: "Planilla de origen",
 };
+
+// Detalle desplegado de un evento "modificacion" (2026-10-01): `cambios`
+// llega indexado por la columna real, en snake_case, con los valores
+// crudos (los importes como texto de numeric, "10000.00"). Acá se traduce
+// la columna a un nombre legible y se formatea el valor. La frase de una
+// línea NO pasa por acá: la arma el backend y se pinta tal cual.
+const CAMBIO_LABEL: Record<string, string> = {
+  cantidad_bultos: "Bultos",
+  flete_importe: "Flete",
+  tipo: "Tipo",
+  lugar_pago: "Lugar de pago",
+  forma_pago: "Forma de pago",
+  contrarreembolso_importe: "Contra reembolso",
+  remito_manual_numero: "Remito N°",
+  valor_declarado: "Valor declarado",
+  gasto: "Gasto",
+  observaciones: "Contenido / observaciones",
+  remitente_nombre: "Remitente",
+  remitente_telefono: "Teléfono del remitente",
+  remitente_calle: "Calle del remitente",
+  remitente_numero: "Número del remitente",
+  remitente_piso: "Piso del remitente",
+  remitente_referencia: "Referencia del remitente",
+  destinatario_nombre: "Destinatario",
+  destinatario_telefono: "Teléfono del destinatario",
+  destinatario_calle: "Calle del destinatario",
+  destinatario_numero: "Número del destinatario",
+  destinatario_piso: "Piso del destinatario",
+  destinatario_referencia: "Referencia del destinatario",
+};
+
+const CAMBIO_ES_IMPORTE = new Set([
+  "flete_importe",
+  "contrarreembolso_importe",
+  "valor_declarado",
+  "gasto",
+]);
+
+const CAMBIO_OPCIONES: Record<string, { value: string; label: string }[]> = {
+  tipo: TIPOS,
+  lugar_pago: LUGARES_PAGO,
+  forma_pago: FORMAS_PAGO,
+};
+
+function etiquetaDe(opciones: { value: string; label: string }[], valor: string): string {
+  return opciones.find((o) => o.value === valor)?.label ?? valor;
+}
+
+function valorDeCambio(columna: string, valor: unknown): string {
+  // Mismo texto que usa el backend en la frase para un valor vacío.
+  if (valor === null || valor === undefined || valor === "") return "(vacío)";
+  if (CAMBIO_ES_IMPORTE.has(columna)) return formatImporte(String(valor));
+  const opciones = CAMBIO_OPCIONES[columna];
+  if (opciones) return etiquetaDe(opciones, String(valor));
+  return String(valor);
+}
 
 function tiempoRelativo(iso: string): string {
   try {
@@ -269,6 +336,9 @@ export function SeguimientoView({
 
       {resultado && (
         <SeguimientoResultado
+          // Un envío distinto es una ficha distinta: el panel abierto y la
+          // oferta de reimprimir no pasan de un envío al siguiente.
+          key={resultado.envio.id}
           data={resultado}
           localidadNombre={localidadNombre}
           puedeAccion={puedeAccion}
@@ -319,7 +389,7 @@ function EnviosRecientesList({
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-semibold">#{e.guiaDiaria}</span>
+                    <span className="font-mono font-semibold">#{e.guiaDiaria ?? e.numero}</span>
                     <Badge variant={ubicacionVariant}>{ubicacionLabel}</Badge>
                   </div>
                   <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -357,7 +427,10 @@ function SeguimientoResultado({
   setEventoAbierto: (id: string | null) => void;
   onRefrescar: () => Promise<void>;
 }) {
-  const { envio, custodiaActual, eventos } = data;
+  const { envio, custodiaActual, eventos, edicion } = data;
+  const [panelAbierto, setPanelAbierto] = React.useState(false);
+  const [ofrecerRemito, setOfrecerRemito] = React.useState(false);
+  const sectorNombre = sectores.find((s) => s.id === envio.sectorDestinoId)?.nombre ?? "—";
   const ubicacionLabel = UBICACION_LABEL[envio.ubicacion] ?? envio.ubicacion;
   const ubicacionVariant = UBICACION_VARIANT[envio.ubicacion] ?? "secondary";
   const ultimoEvento = eventos[eventos.length - 1];
@@ -373,7 +446,7 @@ function SeguimientoResultado({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-lg font-semibold">#{envio.guiaDiaria}</span>
+                <span className="font-mono text-lg font-semibold">#{envio.guiaDiaria ?? envio.numero}</span>
                 <Badge variant={ubicacionVariant}>{ubicacionLabel}</Badge>
                 <span className="text-xs text-muted-foreground">{envio.estadoActual}</span>
               </div>
@@ -413,7 +486,29 @@ function SeguimientoResultado({
 
           <Separator />
 
+          {/* Ficha completa del envío (2026-10-01): hasta ahora solo se veía
+              el destinatario y la calle de destino. Remitente, piso,
+              referencia, tipo, pago e importes ya venían en la respuesta —
+              son justo los datos que se corrigen con "Modificar datos". */}
           <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div className="flex items-start gap-2">
+              <Store className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="text-xs text-muted-foreground">Remitente</p>
+                <p className="font-medium">{envio.remitenteNombre}</p>
+                <p className="text-xs text-muted-foreground">{envio.remitenteTelefono}</p>
+                {envio.remitenteCalle && (
+                  <p className="text-xs text-muted-foreground">
+                    {envio.remitenteCalle} {envio.remitenteNumero ?? ""}
+                    {envio.remitentePiso ? ` · ${envio.remitentePiso}` : ""}
+                  </p>
+                )}
+                {envio.remitenteReferencia && (
+                  <p className="text-xs text-muted-foreground">Ref.: {envio.remitenteReferencia}</p>
+                )}
+                <p className="text-xs text-muted-foreground">{localidadNombre(envio.localidadOrigenId)}</p>
+              </div>
+            </div>
             <div className="flex items-start gap-2">
               <User className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <div>
@@ -422,17 +517,48 @@ function SeguimientoResultado({
                 <p className="text-xs text-muted-foreground">{envio.destinatarioTelefono}</p>
               </div>
             </div>
-            <div className="flex items-start gap-2">
+            <div className="flex items-start gap-2 sm:col-start-2">
               <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">Destino</p>
                 <p className="font-medium">
                   {envio.destinatarioCalle} {envio.destinatarioNumero ?? ""}
+                  {envio.destinatarioPiso ? ` · ${envio.destinatarioPiso}` : ""}
                 </p>
-                <p className="text-xs text-muted-foreground">{localidadNombre(envio.localidadDestinoId)}</p>
+                {envio.destinatarioReferencia && (
+                  <p className="text-xs text-muted-foreground">Ref.: {envio.destinatarioReferencia}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {localidadNombre(envio.localidadDestinoId)} · barrio {sectorNombre}
+                </p>
               </div>
             </div>
           </div>
+
+          <Separator />
+
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+            <DatoEnvio label="Tipo" valor={etiquetaDe(TIPOS, envio.tipo)} />
+            <DatoEnvio
+              label="Pago"
+              valor={`${etiquetaDe(LUGARES_PAGO, envio.lugarPago)} · ${etiquetaDe(FORMAS_PAGO, envio.formaPago)}`}
+            />
+            <DatoEnvio label="Flete" valor={formatImporte(envio.fleteImporte)} />
+            {envio.contrarreembolsoImporte !== null && (
+              <DatoEnvio label="Contra reembolso" valor={formatImporte(envio.contrarreembolsoImporte)} />
+            )}
+            <DatoEnvio label="Gasto" valor={formatImporte(envio.gasto ?? "0")} />
+            {envio.valorDeclarado != null && (
+              <DatoEnvio label="Valor declarado" valor={formatImporte(envio.valorDeclarado)} />
+            )}
+            {envio.observaciones && (
+              <DatoEnvio
+                label="Contenido / observaciones"
+                valor={envio.observaciones}
+                className="col-span-2 sm:col-span-3"
+              />
+            )}
+          </dl>
 
           {envio.etiquetas.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -444,8 +570,66 @@ function SeguimientoResultado({
               ))}
             </div>
           )}
+
+          {/* Si se puede modificar lo decide el backend para el usuario que
+              consulta (`edicion`, ver seguimiento.ts): permitida -> botón;
+              con bloqueo -> su mensaje como aviso; sin ninguno (sin permiso,
+              o un backend que todavía no manda `edicion`) -> nada. */}
+          {edicion?.permitida ? (
+            <div className="flex justify-end">
+              <Button variant="outline" className="gap-1.5" onClick={() => setPanelAbierto(true)}>
+                <Pencil className="size-4" />
+                Modificar datos
+              </Button>
+            </div>
+          ) : edicion?.bloqueo ? (
+            <p
+              role="note"
+              className="flex items-start gap-2 rounded-md bg-muted/50 p-2.5 text-xs text-muted-foreground"
+            >
+              <Lock className="mt-0.5 size-3.5 shrink-0" />
+              {edicion.bloqueo.mensaje}
+            </p>
+          ) : null}
+
+          {/* Casi todos los datos modificables salen en el papel: tras
+              guardar se ofrece reimprimir, cualquiera haya sido el cambio. */}
+          {ofrecerRemito && (
+            <div
+              role="status"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/50 p-2.5 text-sm"
+            >
+              <span>Los datos se modificaron. El remito impreso antes quedó desactualizado.</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => abrirRemito(envio.numero)}
+              >
+                <Printer className="size-4" />
+                Reimprimir remito
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      <ModificarEnvioPanel
+        envio={envio}
+        destino={{ localidad: localidadNombre(envio.localidadDestinoId), sector: sectorNombre }}
+        abierto={panelAbierto}
+        onCerrar={() => setPanelAbierto(false)}
+        onGuardado={async () => {
+          setPanelAbierto(false);
+          setOfrecerRemito(true);
+          toast.success("Datos modificados");
+          await onRefrescar();
+        }}
+        onBloqueado={async () => {
+          setPanelAbierto(false);
+          await onRefrescar();
+        }}
+      />
 
       <AccionesEnvio
         envio={envio}
@@ -475,6 +659,23 @@ function SeguimientoResultado({
   );
 }
 
+function DatoEnvio({
+  label,
+  valor,
+  className,
+}: {
+  label: string;
+  valor: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="font-medium">{valor}</dd>
+    </div>
+  );
+}
+
 function EventoRow({
   evento,
   esUltimo,
@@ -487,9 +688,12 @@ function EventoRow({
   onToggle: () => void;
 }) {
   const Icon = EVENTO_ICON[evento.tipo] ?? Clock;
-  const detalleEntries = Object.entries(evento.detalle ?? {}).filter(
-    ([, v]) => v !== null && v !== undefined && v !== ""
-  );
+  const detalleEntries = Object.entries(evento.detalle ?? {})
+    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    // En una modificación se lee primero qué cambió y después por qué.
+    .sort(([a], [b]) =>
+      evento.tipo === "modificacion" ? Number(a === "motivo") - Number(b === "motivo") : 0
+    );
   const tieneDetalle =
     detalleEntries.length > 0 || evento.registradoPor || evento.punto || evento.planilla || evento.relojSospechoso;
 
@@ -553,17 +757,18 @@ function EventoRow({
               // 2026-09-15) es un objeto anidado {columna: {antes,
               // despues}}, no un valor plano — String(v) daría
               // "[object Object]". Se muestra cada columna cambiada como
-              // "antes → después" en vez de eso. El resumen de una línea
-              // ya lo cubre `evento.frase` (armada por el backend); esto
-              // es solo el detalle expandido.
+              // "antes → después" en vez de eso, con el nombre legible de
+              // la columna y el valor formateado (ver CAMBIO_LABEL). El
+              // resumen de una línea ya lo cubre `evento.frase` (armada
+              // por el backend); esto es solo el detalle expandido.
               if (k === "cambios" && v && typeof v === "object") {
                 return (
                   <div key={k} className="flex flex-col gap-0.5">
                     {Object.entries(v as Record<string, { antes?: unknown; despues?: unknown }>).map(
                       ([campo, diff]) => (
                         <p key={campo}>
-                          {DETALLE_LABEL[campo] ?? campo}: {String(diff?.antes ?? "—")} →{" "}
-                          {String(diff?.despues ?? "—")}
+                          {CAMBIO_LABEL[campo] ?? campo}: {valorDeCambio(campo, diff?.antes)} →{" "}
+                          {valorDeCambio(campo, diff?.despues)}
                         </p>
                       )
                     )}
@@ -719,7 +924,7 @@ function AccionesEnvio({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Anular envío</DialogTitle>
-            <DialogDescription>El envío #{envio.guiaDiaria} queda anulado. Esta acción se registra en la historia.</DialogDescription>
+            <DialogDescription>El envío #{envio.guiaDiaria ?? envio.numero} queda anulado. Esta acción se registra en la historia.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
             <Label htmlFor="motivo-anular">Motivo</Label>
@@ -836,7 +1041,7 @@ function AccionesEnvio({
           <DialogHeader>
             <DialogTitle>Confirmar entrega</DialogTitle>
             <DialogDescription>
-              Confirma que el envío #{envio.guiaDiaria}, ya entregado, llegó correctamente a destino. Quien confirma no puede ser quien entregó.
+              Confirma que el envío #{envio.guiaDiaria ?? envio.numero}, ya entregado, llegó correctamente a destino. Quien confirma no puede ser quien entregó.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
