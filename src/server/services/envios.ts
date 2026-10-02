@@ -303,6 +303,9 @@ export interface RemitoApi {
     telefono: string;
     direccion: string;
   };
+  // Id (uuid) del envio. El remito se pide por `numero`, pero registrar su
+  // impresion va por id: POST /envios/{envioId}/impresiones-remito.
+  envioId: string;
   numero: string;
   // Numero de envio SIN el guion, ya formateado por el backend para
   // codificar directo en el codigo de barras (Code 39).
@@ -345,6 +348,25 @@ export interface RemitoApi {
   pagoServicio: { lugar: LugarPagoApi; forma: FormaPagoApi } | null;
   importes: { cobrado: string | null; aCobrar: string | null; total: string | null };
   levanto: string;
+  // 2026-10-02 (registro de impresion): si este remito se puede imprimir lo
+  // decide el backend segun el estado del envio, y lo informa aca. Un
+  // anulado (ENVIO_ANULADO) o un alta incompleta (ALTA_INCOMPLETA) se ven en
+  // pantalla pero no se imprimen: `bloqueo.mensaje` se muestra tal cual.
+  impresion: ImpresionDelRemito;
+}
+
+export interface ImpresionDelRemito {
+  permitida: boolean;
+  bloqueo: { codigo: string; mensaje: string } | null;
+}
+
+// Respuesta de POST /envios/{envioId}/impresiones-remito: la impresion que
+// quedo en el historial del envio. `numero` es su ordinal (1 = primera; de
+// 2 en adelante es una reimpresion y el papel lo dice).
+export interface ImpresionRegistradaApi {
+  numero: number;
+  impresoEn: string;
+  impresoPor: { id: string; nombre: string };
 }
 
 export async function getRemito(numero: string): Promise<RemitoApi> {
@@ -352,3 +374,20 @@ export async function getRemito(numero: string): Promise<RemitoApi> {
   return apiFetch<RemitoApi>(`/envios/${encodeURIComponent(numero)}/remito`, { token });
 }
 
+// POST /envios/{envioId}/impresiones-remito (2026-10-02): deja en el
+// historial del envio el evento `impresion_remito`. La pagina del remito lo
+// llama ANTES de abrir el dialogo de impresion: sin registro no se imprime.
+// Idempotente por `clientUuid` (201 la primera vez, 200 con la misma
+// impresion en un reintento). 409 ENVIO_ANULADO / ALTA_INCOMPLETA si el
+// envio no se puede imprimir, con el mensaje en `detail`. `motivo` existe
+// en el contrato pero todavia no se manda.
+export async function registrarImpresionRemito(
+  envioId: string,
+  clientUuid: string
+): Promise<ImpresionRegistradaApi> {
+  const token = await requireToken();
+  return apiFetch<ImpresionRegistradaApi>(
+    `/envios/${encodeURIComponent(envioId)}/impresiones-remito`,
+    { method: "POST", token, body: { clientUuid } }
+  );
+}

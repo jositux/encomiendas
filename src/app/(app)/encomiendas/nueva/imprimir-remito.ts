@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 // NOTA-2026-09-28-02, ajustada en vivo por el usuario (Josi): tiene que
 // ser automático -- al terminar el alta, el diálogo de impresión del
 // remito aparece solo, sin que el operador apriete nada. La spec
@@ -20,6 +22,27 @@
 // terminó de pintar -- solo lo hace si detecta que está embebida, así que
 // abrir /remito/{numero} suelto (pestaña nueva, visita directa) no cambia
 // en nada.
+//
+// 2026-10-02 (registro de impresión): sin registro no se imprime, y eso
+// vale también acá. La página embebida registra la impresión en el backend
+// ANTES de avisar "remito-listo"; si no pudo, avisa "remito-error" con el
+// motivo. Esta ventana solo llama a print() con un "remito-listo". Si llega
+// un error -- o no llega nada -- no hay diálogo: se muestra el aviso de
+// abajo, con una acción que abre el remito en una pestaña para imprimirlo
+// desde su botón (que vuelve a intentar el registro).
+export const AVISO_IMPRESION_NO_REGISTRADA = "No se pudo registrar la impresión del remito";
+
+function avisarQueNoSeImprimio(numero: string, detalle?: string) {
+  toast.error(AVISO_IMPRESION_NO_REGISTRADA, {
+    description: detalle || "El remito no se imprimió.",
+    duration: 15000,
+    action: {
+      label: "Abrir remito",
+      onClick: () => abrirRemito(numero),
+    },
+  });
+}
+
 export function imprimirRemitoAutomatico(numero: string) {
   if (typeof window === "undefined") return;
 
@@ -48,17 +71,27 @@ export function imprimirRemitoAutomatico(numero: string) {
   function onMessage(ev: MessageEvent) {
     if (ev.origin !== window.location.origin) return;
     if (ev.source !== iframe.contentWindow) return;
-    if (!ev.data || ev.data.tipo !== "remito-listo") return;
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    limpiar();
+    if (!ev.data) return;
+    if (ev.data.tipo === "remito-listo") {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      limpiar();
+    } else if (ev.data.tipo === "remito-error") {
+      // La impresión no quedó registrada: NO se llama a print().
+      avisarQueNoSeImprimio(numero, typeof ev.data.mensaje === "string" ? ev.data.mensaje : "");
+      limpiar();
+    }
   }
 
   window.addEventListener("message", onMessage);
   // Si el aviso nunca llega (remito no encontrado todavía, error de red,
-  // etc.) no se traba nada -- el iframe se descarta solo más tarde y el
-  // operador siempre tiene el link manual en "Envíos recientes".
-  setTimeout(limpiar, 20_000);
+  // etc.) no se traba nada -- el iframe se descarta solo más tarde. Como
+  // tampoco hubo diálogo, se le avisa al operador igual que ante un error
+  // (antes esto pasaba en silencio).
+  setTimeout(() => {
+    if (!limpiado) avisarQueNoSeImprimio(numero);
+    limpiar();
+  }, 20_000);
 
   iframe.src = `/remito/${encodeURIComponent(numero)}`;
   document.body.appendChild(iframe);
@@ -66,7 +99,8 @@ export function imprimirRemitoAutomatico(numero: string) {
 
 // Fallback manual (p. ej. si el operador quiere reimprimir, o si el
 // automático no saltó): abre el remito en una pestaña nueva de verdad,
-// con su propio botón "Imprimir" (ver remito-view.tsx).
+// con su propio botón "Imprimir" (ver remito-view.tsx), que registra la
+// impresión antes de abrir el diálogo.
 export function abrirRemito(numero: string) {
   if (typeof window === "undefined") return;
   window.open(`/remito/${encodeURIComponent(numero)}`, "_blank", "noopener,noreferrer");
