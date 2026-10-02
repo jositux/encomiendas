@@ -103,12 +103,6 @@ export function ModificarEnvioPanel({
   );
 }
 
-// Rechazos cuyo `detail` hay que mostrar tal cual: dice qué campo y por qué.
-// CAMPO_NO_PERMITIDO (403) llega si el pedido cambia un importe que este
-// usuario no puede tocar -- p. ej. el envío dejó su origen con el panel
-// abierto.
-const CODIGOS_CON_DETALLE = ["REGLA_DE_TIPO", "CAMPO_NO_PERMITIDO"];
-
 function nuevoClientUuid(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -173,18 +167,16 @@ function Formulario({
       }
       if (CODIGOS_DE_BLOQUEO.includes(r.code)) {
         // El envío cambió de situación con el panel abierto (p. ej. entró
-        // a una planilla): se cierra, se avisa y el seguimiento recargado
-        // muestra el aviso de bloqueo que corresponda.
+        // a una planilla, o salió de su origen y ya no se le pueden tocar
+        // los importes): se cierra, se avisa con el detalle del backend y
+        // el seguimiento recargado muestra lo que corresponda.
         toast.error(r.title, { description: r.message });
         onBloqueado();
         return;
       }
-      // REGLA_DE_TIPO y CAMPO_NO_PERMITIDO: el `detail` del backend nombra
-      // cada campo y qué le pasa — se muestra entero. El resto de los
-      // rechazos, con su título.
-      setErrorAlGuardar(
-        CODIGOS_CON_DETALLE.includes(r.code) ? r.message : r.title || r.message
-      );
+      // REGLA_DE_TIPO: el `detail` del backend nombra cada campo y qué le
+      // pasa — se muestra entero. El resto de los rechazos, con su título.
+      setErrorAlGuardar(r.code === "REGLA_DE_TIPO" ? r.message : r.title || r.message);
     } finally {
       setGuardando(false);
     }

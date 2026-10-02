@@ -437,7 +437,7 @@ describe("Seguimiento — panel Modificar datos con campos = todos, o sin el cam
     expect(within(panel).queryByText(/Los importes los modifica el origen/)).toBeNull();
   });
 
-  it("CAMPO_NO_PERMITIDO (403): muestra el detalle del backend y deja el panel abierto", async () => {
+  it("CAMPO_NO_PERMITIDO (403): cierra, avisa con el detalle y recarga; al reabrir, los importes ya no se editan", async () => {
     await abrirSeguimiento(seguimientoFixture({ edicion: PERMITIDA }));
     const panel = await abrirPanel();
     const detalle =
@@ -448,14 +448,30 @@ describe("Seguimiento — panel Modificar datos con campos = todos, o sin el cam
       title: "Campo no permitido",
       message: detalle,
     });
+    // El envío salió de su origen con el panel abierto: el seguimiento
+    // recargado ya dice que este usuario no puede tocar los importes.
+    vi.mocked(refrescarSeguimientoAction).mockResolvedValue({
+      ok: true,
+      data: seguimientoFixture({
+        edicion: { permitida: true, bloqueo: null, campos: "sin_importes" },
+        envio: { observaciones: "Ficha recargada" },
+      }),
+    });
 
     fireEvent.change(campo("mod-flete"), { target: { value: "8000" } });
     fireEvent.change(campo("mod-motivo"), { target: { value: "flete mal cargado" } });
     fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
 
-    expect(await within(panel).findByRole("alert")).toHaveTextContent(detalle);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(refrescarSeguimientoAction).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(toast.error).toHaveBeenCalledWith("Campo no permitido", { description: detalle });
+    expect(refrescarSeguimientoAction).toHaveBeenCalledWith("000000032-1");
+    // No se guardó nada: no hay remito para reimprimir.
+    expect(screen.queryByRole("button", { name: "Reimprimir remito" })).toBeNull();
+
+    await screen.findByText("Ficha recargada");
+    const reabierto = await abrirPanel();
+    expect(document.querySelector("#mod-flete")).toBeNull();
+    expect(within(reabierto).getByRole("group", { name: "Importes" })).toBeInTheDocument();
   });
 });
 

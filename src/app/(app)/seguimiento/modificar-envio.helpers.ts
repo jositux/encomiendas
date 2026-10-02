@@ -34,18 +34,26 @@ export const MOTIVO_MAX = 200;
 // contrato) y el `detail` trae el mismo mensaje. Ya no tiene sentido seguir
 // editando: el panel se cierra, avisa y recarga el seguimiento, que trae el
 // aviso de bloqueo que corresponda.
+//
+// CAMPO_NO_PERMITIDO (403) es el mismo caso a medias: el pedido cambiaba un
+// importe que este usuario ya no puede tocar (el envío dejó su origen con
+// el panel abierto). No se aplicó nada. Se cierra, se muestra el `detail` y
+// se recarga, así al reabrir el panel los importes ya vienen en solo
+// lectura (`edicion.campos = "sin_importes"`).
 export const CODIGOS_DE_BLOQUEO = [
   "ENVIO_EN_PLANILLA",
   "ENVIO_EN_CUSTODIA",
   "FUERA_DE_ALCANCE",
   "ENVIO_CERRADO",
+  "CAMPO_NO_PERMITIDO",
 ];
 
 // "Los importes": los siete campos del PATCH que definen qué se cobra y
 // cómo. Con `edicion.campos = "sin_importes"` (quien tiene el envío en
 // custodia fuera de su origen) el panel los muestra sin dejar editarlos y
 // NO viajan en el PATCH -- si viajara uno cambiado, el backend responde 403
-// CAMPO_NO_PERMITIDO y no aplica nada del pedido. Misma lista que el spec
+// CAMPO_NO_PERMITIDO y no aplica nada del pedido (ver CODIGOS_DE_BLOQUEO
+// para qué hace el panel en ese caso). Misma lista que el spec
 // del backend (2026-10-02-modificar-envio-en-custodia, §2).
 export const CAMPOS_DE_IMPORTES: (keyof CamposModificablesEnvio)[] = [
   "fleteImporte",
