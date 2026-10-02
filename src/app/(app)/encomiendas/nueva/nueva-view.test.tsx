@@ -196,7 +196,10 @@ describe("NuevaEncomiendaView - modo Carga rápida", () => {
     expect(data.destinatario.calle).toBe("San Martin 123");
     expect(data.destinatario.localidadId).toBe("loc-1");
     expect(toast.success).toHaveBeenCalledTimes(1);
-  });
+    // 15 s de límite, como el primer test del archivo: tipea letra por letra
+    // y con los 5 s por defecto se cae por tiempo cuando la suite completa
+    // corre en paralelo (1 de cada 3 corridas el 2026-10-02).
+  }, 15_000);
 
   // 2026-10-01: PATCH /envios/:id exige `motivo`. Corregir una fila recién
   // guardada no le pide nada al operador: manda un motivo fijo.
