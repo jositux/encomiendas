@@ -52,12 +52,26 @@ function nuevoClientUuid(): string {
     : `cid-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 }
 
-// "dd/mm/aaaa hh:mm" de la leyenda de reimpresión.
+// "dd/mm/aaaa hh:mm" de la leyenda de reimpresión, SIEMPRE en hora de
+// Argentina: es un papel de la empresa, no depende de dónde esté ni cómo
+// tenga configurado el reloj el navegador que lo imprime.
+const FORMATO_DE_IMPRESION = new Intl.DateTimeFormat("es-AR", {
+  timeZone: "America/Argentina/Buenos_Aires",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
 function fechaDeImpresion(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const dos = (n: number) => String(n).padStart(2, "0");
-  return `${dos(d.getDate())}/${dos(d.getMonth() + 1)}/${d.getFullYear()} ${dos(d.getHours())}:${dos(d.getMinutes())}`;
+  const parte = Object.fromEntries(
+    FORMATO_DE_IMPRESION.formatToParts(d).map((x) => [x.type, x.value])
+  );
+  return `${parte.day}/${parte.month}/${parte.year} ${parte.hour}:${parte.minute}`;
 }
 
 // Desde la segunda impresión el papel lo dice, en las dos copias.
@@ -77,7 +91,10 @@ export function leyendaDeReimpresion(impresion: ImpresionRegistradaApi): string 
 //   remito está oculto en impresión y en su lugar sale un aviso: es lo que
 //   imprime un Ctrl+P o el menú del navegador. Al cerrarse el diálogo
 //   (`afterprint`) la habilitación se consume; volver a imprimir exige
-//   volver a registrar.
+//   volver a registrar. Por si `afterprint` no llega (algún navegador, o
+//   el iframe de la impresión automática), hay una segunda guarda en
+//   `beforeprint`: una habilitación sirve para el primer diálogo que se
+//   abre; si se abre otro con la misma, se revoca antes de imprimir.
 // - La respuesta trae el número de impresión: desde la segunda, las dos
 //   copias llevan la leyenda "REIMPRESIÓN n.º N · fecha · usuario".
 // - Si el backend dice que el envío no se imprime (`remito.impresion`, p.
@@ -102,6 +119,9 @@ export function RemitoView({ remito }: { remito: RemitoApi }) {
   // Guarda sincrónica contra el doble clic: `registrando` (estado) recién
   // se ve en el render siguiente.
   const registrandoRef = React.useRef(false);
+  // La habilitación vista desde los eventos de impresión, que corren fuera
+  // del render: si hay una viva, y si ya abrió su diálogo.
+  const habilitacionRef = React.useRef({ viva: false, usada: false });
 
   const bloqueo = bloqueoAlRegistrar ?? remito.impresion?.bloqueo?.mensaje ?? null;
   const imprimible = bloqueoAlRegistrar === null && remito.impresion?.permitida === true;
@@ -120,6 +140,7 @@ export function RemitoView({ remito }: { remito: RemitoApi }) {
       const r = await registrarImpresionRemitoAction(remito.envioId, clientUuid);
       if (r.ok) {
         intentoRef.current = null;
+        habilitacionRef.current = { viva: true, usada: false };
         // flushSync: la habilitación (y la leyenda de reimpresión) tienen
         // que estar en el DOM antes de que quien llama abra el diálogo.
         flushSync(() => setHabilitacion(r.impresion));
@@ -156,10 +177,34 @@ export function RemitoView({ remito }: { remito: RemitoApi }) {
   // Una habilitación, un diálogo: se consume cuando el diálogo se cierra,
   // haya salido papel o no. También corre tras un Ctrl+P sin habilitación,
   // donde no hay nada que consumir.
+  //
+  // Segunda guarda, en `beforeprint`, por si `afterprint` no llega: el
+  // primer diálogo que se abre con una habilitación viva la marca como
+  // usada; si se abre OTRO con esa misma habilitación (un Ctrl+P después
+  // de imprimir), se revoca ahí mismo -- con flushSync, porque el navegador
+  // arma la hoja apenas termina este evento -- y ese diálogo imprime el
+  // aviso, no el remito con la leyenda de la impresión anterior.
   React.useEffect(() => {
-    const consumir = () => setHabilitacion(null);
+    const consumir = () => {
+      habilitacionRef.current = { viva: false, usada: false };
+      setHabilitacion(null);
+    };
+    const alAbrirDialogo = () => {
+      const actual = habilitacionRef.current;
+      if (!actual.viva) return;
+      if (!actual.usada) {
+        actual.usada = true;
+        return;
+      }
+      habilitacionRef.current = { viva: false, usada: false };
+      flushSync(() => setHabilitacion(null));
+    };
     window.addEventListener("afterprint", consumir);
-    return () => window.removeEventListener("afterprint", consumir);
+    window.addEventListener("beforeprint", alAbrirDialogo);
+    return () => {
+      window.removeEventListener("afterprint", consumir);
+      window.removeEventListener("beforeprint", alAbrirDialogo);
+    };
   }, []);
 
   // NOTA-2026-09-28-02: si esta página está embebida en el <iframe> oculto

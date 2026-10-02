@@ -69,7 +69,8 @@ function remito(destinatario: Partial<RemitoApi["destinatario"]> = {}): RemitoAp
 function impresion(numero: number): ImpresionRegistradaApi {
   return {
     numero,
-    impresoEn: "2026-10-02T15:30:00",
+    // 15:30 UTC = 12:30 en Argentina (UTC-3).
+    impresoEn: "2026-10-02T15:30:00.000Z",
     impresoPor: { id: "u-luis", nombre: "Luis" },
   };
 }
@@ -251,6 +252,79 @@ describe("RemitoView — sin registro no se imprime", () => {
   });
 });
 
+// Segunda guarda, por si `afterprint` no llega en algún navegador o en el
+// iframe: una habilitación abre un solo diálogo.
+describe("RemitoView — la habilitación tampoco sobrevive a un segundo diálogo sin afterprint", () => {
+  const abrirDialogo = () =>
+    act(() => {
+      window.dispatchEvent(new Event("beforeprint"));
+    });
+
+  it("el primer beforeprint la usa; un segundo, sin afterprint en el medio, la revoca", async () => {
+    vi.mocked(registrarImpresionRemitoAction).mockResolvedValue(registroOk(2));
+    const { container } = render(<RemitoView remito={remito()} />);
+
+    fireEvent.click(botonImprimir());
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+
+    // El diálogo que abrió el botón: imprime el remito, con su leyenda.
+    abrirDialogo();
+    expect(habilitado(container)).toBe(true);
+    expect(container.textContent).toMatch(/REIMPRESIÓN n\.º 2/);
+
+    // `afterprint` nunca llegó y el usuario hace Ctrl+P: sale el aviso.
+    abrirDialogo();
+    expect(habilitado(container)).toBe(false);
+    expect(avisoDeImpresion(container)).toBe("Para imprimir este remito usá el botón Imprimir");
+    expect(container.textContent).not.toMatch(/REIMPRESIÓN/);
+  });
+
+  it("un beforeprint sin habilitación no cambia nada", () => {
+    const { container } = render(<RemitoView remito={remito()} />);
+    abrirDialogo();
+    abrirDialogo();
+    expect(habilitado(container)).toBe(false);
+    expect(avisoDeImpresion(container)).toBe("Para imprimir este remito usá el botón Imprimir");
+  });
+
+  it("volver a registrar da una habilitación nueva, que vuelve a servir para un diálogo", async () => {
+    vi.mocked(registrarImpresionRemitoAction)
+      .mockResolvedValueOnce(registroOk(1))
+      .mockResolvedValueOnce(registroOk(2));
+    const { container } = render(<RemitoView remito={remito()} />);
+
+    fireEvent.click(botonImprimir());
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    abrirDialogo();
+    abrirDialogo();
+    expect(habilitado(container)).toBe(false);
+
+    fireEvent.click(botonImprimir());
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(2));
+    abrirDialogo();
+    expect(habilitado(container)).toBe(true);
+    expect(registrarImpresionRemitoAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("si el botón se toca con una habilitación todavía viva, la nueva arranca sin usar", async () => {
+    vi.mocked(registrarImpresionRemitoAction)
+      .mockResolvedValueOnce(registroOk(1))
+      .mockResolvedValueOnce(registroOk(2));
+    const { container } = render(<RemitoView remito={remito()} />);
+
+    fireEvent.click(botonImprimir());
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    abrirDialogo();
+
+    // Sin afterprint: el botón registra de nuevo y su diálogo imprime.
+    fireEvent.click(botonImprimir());
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(2));
+    abrirDialogo();
+    expect(habilitado(container)).toBe(true);
+    expect(container.textContent).toMatch(/REIMPRESIÓN n\.º 2/);
+  });
+});
+
 describe("RemitoView — leyenda de reimpresión", () => {
   it("la primera impresión sale como siempre, sin leyenda", async () => {
     vi.mocked(registrarImpresionRemitoAction).mockResolvedValue(registroOk(1));
@@ -267,7 +341,7 @@ describe("RemitoView — leyenda de reimpresión", () => {
     vi.mocked(registrarImpresionRemitoAction).mockResolvedValue(registroOk(2));
     const { container } = render(<RemitoView remito={remito()} />);
     print.mockImplementation(() => {
-      expect(screen.getAllByText("REIMPRESIÓN n.º 2 · 02/10/2026 15:30 · Luis")).toHaveLength(2);
+      expect(screen.getAllByText("REIMPRESIÓN n.º 2 · 02/10/2026 12:30 · Luis")).toHaveLength(2);
     });
 
     fireEvent.click(botonImprimir());
@@ -280,9 +354,20 @@ describe("RemitoView — leyenda de reimpresión", () => {
     expect(container.textContent).not.toMatch(/REIMPRESIÓN/);
   });
 
+  it("la hora es la de Argentina, no la del navegador", () => {
+    // 01:10 UTC del 3 de octubre todavía es 2 de octubre, 22:10, en Argentina.
+    expect(leyendaDeReimpresion({ ...impresion(2), impresoEn: "2026-10-03T01:10:00.000Z" })).toBe(
+      "REIMPRESIÓN n.º 2 · 02/10/2026 22:10 · Luis"
+    );
+    // Medianoche se escribe 00, no 24.
+    expect(leyendaDeReimpresion({ ...impresion(2), impresoEn: "2026-10-02T03:05:00.000Z" })).toBe(
+      "REIMPRESIÓN n.º 2 · 02/10/2026 00:05 · Luis"
+    );
+  });
+
   it("arma el texto con el ordinal que manda el backend", () => {
     expect(leyendaDeReimpresion(impresion(1))).toBeNull();
-    expect(leyendaDeReimpresion(impresion(11))).toBe("REIMPRESIÓN n.º 11 · 02/10/2026 15:30 · Luis");
+    expect(leyendaDeReimpresion(impresion(11))).toBe("REIMPRESIÓN n.º 11 · 02/10/2026 12:30 · Luis");
   });
 });
 
