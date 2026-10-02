@@ -89,9 +89,19 @@ export interface EventoSeguimiento {
 // en lugar del boton; sin ninguno de los dos no se muestra nada (p. ej. un
 // chofer, que no tiene el permiso). Codigos de bloqueo: ENVIO_EN_PLANILLA,
 // ENVIO_EN_CUSTODIA, FUERA_DE_ALCANCE, ENVIO_CERRADO.
+//
+// 2026-10-02 (modificar en custodia): `campos` dice QUÉ puede modificar.
+// "todos" son los 22 campos del PATCH; "sin_importes" deja afuera los siete
+// que definen qué se cobra y cómo (flete, contrarreembolso, gasto, valor
+// declarado, tipo, lugar y forma de pago) -- es el caso de quien tiene el
+// envío en custodia fuera de su origen. null cuando no está permitida.
+// Opcional: un backend anterior no lo manda, y eso equivale a "todos".
+export type CamposEditables = "todos" | "sin_importes";
+
 export interface EdicionEnvio {
   permitida: boolean;
   bloqueo: { codigo: string; mensaje: string } | null;
+  campos?: CamposEditables | null;
 }
 
 export interface SeguimientoResponse {
