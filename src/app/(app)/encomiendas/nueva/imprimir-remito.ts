@@ -97,11 +97,24 @@ export function imprimirRemitoAutomatico(numero: string) {
   document.body.appendChild(iframe);
 }
 
-// Fallback manual (p. ej. si el operador quiere reimprimir, o si el
-// automático no saltó): abre el remito en una pestaña nueva de verdad,
-// con su propio botón "Imprimir" (ver remito-view.tsx), que registra la
-// impresión antes de abrir el diálogo.
+// La URL del remito para un botón o enlace de IMPRIMIR. Quien toca
+// "Imprimir remito" quiere imprimir: con `?imprimir=1` la página registra
+// la impresión y abre el diálogo sola al cargar, sin un segundo clic en su
+// botón "Imprimir" (2026-10-02; ver remito-view.tsx). La página saca el
+// parámetro de la URL apenas lo usa, así que recargar esa pestaña no vuelve
+// a imprimir. `/remito/{numero}` a secas sigue siendo "solo ver".
+//
+// El iframe de la impresión automática NO usa esta URL: la página embebida
+// ya registra por su cuenta y es esta ventana la que llama a print().
+export function urlParaImprimirRemito(numero: string): string {
+  return `/remito/${encodeURIComponent(numero)}?imprimir=1`;
+}
+
+// Impresión manual (el operador quiere reimprimir, o el automático no
+// saltó): abre el remito en una pestaña nueva de verdad, que registra la
+// impresión y abre el diálogo al cargar. Si el registro falla, la pestaña
+// queda con el error y su botón "Imprimir" para reintentar.
 export function abrirRemito(numero: string) {
   if (typeof window === "undefined") return;
-  window.open(`/remito/${encodeURIComponent(numero)}`, "_blank", "noopener,noreferrer");
+  window.open(urlParaImprimirRemito(numero), "_blank", "noopener,noreferrer");
 }

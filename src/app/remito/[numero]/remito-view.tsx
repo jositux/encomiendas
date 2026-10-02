@@ -86,7 +86,8 @@ export function leyendaDeReimpresion(impresion: ImpresionRegistradaApi): string 
 //
 // - "Imprimir" primero registra la impresión en el backend (POST
 //   /envios/{envioId}/impresiones-remito) y recién con la respuesta abre
-//   el diálogo. Si el registro falla, no hay diálogo.
+//   el diálogo. Si el registro falla, no hay diálogo. Lo mismo pasa solo,
+//   sin tocar el botón, cuando la página se abre con `?imprimir=1`.
 // - El registro HABILITA un solo diálogo. Mientras no hay habilitación, el
 //   remito está oculto en impresión y en su lugar sale un aviso: es lo que
 //   imprime un Ctrl+P o el menú del navegador. Al cerrarse el diálogo
@@ -241,6 +242,35 @@ export function RemitoView({ remito }: { remito: RemitoApi }) {
       );
     });
     // Solo al montar: `imprimible`/`bloqueo` son los de la carga inicial.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 2026-10-02: abierta con `?imprimir=1` desde un botón "Imprimir remito"
+  // (ver urlParaImprimirRemito en imprimir-remito.ts), la página hace al
+  // cargar lo mismo que su botón "Imprimir": registra y, con la respuesta,
+  // abre el diálogo. Una sola vez:
+  // - el parámetro se saca de la URL ANTES de registrar, así recargar la
+  //   pestaña o volver con el historial no registra ni imprime de nuevo;
+  // - el ref evita un segundo disparo cuando React monta el efecto dos
+  //   veces (modo estricto).
+  // Sin el parámetro (URL escrita a mano, recarga) la página espera el
+  // botón, como siempre. Embebida en el iframe del alta esto no corre: ese
+  // flujo es el efecto de arriba. Si el envío no se imprime, no registra
+  // nada y queda el aviso de bloqueo; si el registro falla, queda el error
+  // con el botón para reintentar.
+  const alAbrirRef = React.useRef(false);
+  React.useEffect(() => {
+    if (window.parent !== window || alAbrirRef.current) return;
+    alAbrirRef.current = true;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("imprimir") !== "1") return;
+    url.searchParams.delete("imprimir");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    if (!imprimible) return;
+    queueMicrotask(() => {
+      void imprimir();
+    });
+    // Solo al montar, igual que el efecto de arriba.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

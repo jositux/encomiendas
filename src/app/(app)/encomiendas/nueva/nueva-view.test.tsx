@@ -246,6 +246,25 @@ describe("NuevaEncomiendaView - modo Carga rápida", () => {
   });
 });
 
+describe("NuevaEncomiendaView - Envíos recientes", () => {
+  // 2026-10-02: quien toca "Imprimir remito" quiere imprimir -- el enlace
+  // abre el remito con ?imprimir=1 y la pestaña imprime al cargar.
+  it("el enlace Imprimir remito abre el remito para imprimir al cargar", () => {
+    vi.mocked(searchClientesAction).mockResolvedValue([]);
+    render(
+      <NuevaEncomiendaView
+        localidades={[localidad("loc-1")]}
+        sectores={[] as SectorApi[]}
+        envios={[envioFixture({ numero: "000000099-1" })]}
+        session={sesion()}
+      />
+    );
+    const enlace = screen.getByRole("link", { name: /Imprimir remito/ });
+    expect(enlace).toHaveAttribute("href", "/remito/000000099-1?imprimir=1");
+    expect(enlace).toHaveAttribute("target", "_blank");
+  });
+});
+
 describe("NuevaEncomiendaView - estado compartido entre modos", () => {
   it("no pierde el remitente (origen) cargado al cambiar de Individual a Carga rápida", async () => {
     const user = userEvent.setup();

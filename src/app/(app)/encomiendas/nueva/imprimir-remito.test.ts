@@ -8,7 +8,12 @@ vi.mock("sonner", () => ({
 }));
 
 import { toast } from "sonner";
-import { AVISO_IMPRESION_NO_REGISTRADA, imprimirRemitoAutomatico } from "./imprimir-remito";
+import {
+  AVISO_IMPRESION_NO_REGISTRADA,
+  abrirRemito,
+  imprimirRemitoAutomatico,
+  urlParaImprimirRemito,
+} from "./imprimir-remito";
 
 // Impresión automática tras un alta (alta individual y Carga rápida usan
 // esta misma función): la ventana madre solo abre el diálogo si la página
@@ -50,8 +55,10 @@ function lanzar() {
 }
 
 describe("imprimirRemitoAutomatico", () => {
-  it("carga el remito en un iframe oculto", () => {
+  it("carga el remito en un iframe oculto, SIN el parámetro de imprimir al abrir", () => {
     const { iframe } = lanzar();
+    // La página embebida ya registra por su cuenta y es esta ventana la que
+    // llama a print(): con `?imprimir=1` habría dos caminos a la vez.
     expect(iframe.getAttribute("src")).toBe("/remito/000000032-1");
     expect(iframe.style.visibility).toBe("hidden");
   });
@@ -88,7 +95,12 @@ describe("imprimirRemitoAutomatico", () => {
 
     const accion = opciones?.action as { label: string; onClick: () => void };
     accion.onClick();
-    expect(abrir).toHaveBeenCalledWith("/remito/000000032-1", "_blank", "noopener,noreferrer");
+    // "Abrir remito" es un botón de imprimir: la pestaña imprime al cargar.
+    expect(abrir).toHaveBeenCalledWith(
+      "/remito/000000032-1?imprimir=1",
+      "_blank",
+      "noopener,noreferrer"
+    );
 
     // Un remito-listo tardío no revive la impresión.
     avisar({ tipo: "remito-listo", numero: "000000032-1" });
@@ -110,5 +122,26 @@ describe("imprimirRemitoAutomatico", () => {
     const { print, avisar } = lanzar();
     avisar({ tipo: "remito-listo", numero: "000000032-1" }, window);
     expect(print).not.toHaveBeenCalled();
+  });
+});
+
+// Los botones "Imprimir remito" (aviso del alta, fila de Carga rápida,
+// "Reimprimir remito" de Seguimiento, "Abrir remito" del aviso de arriba)
+// pasan todos por abrirRemito(); el enlace de "Envíos recientes" usa la
+// misma URL.
+describe("abrirRemito / urlParaImprimirRemito", () => {
+  it("la URL para imprimir lleva ?imprimir=1", () => {
+    expect(urlParaImprimirRemito("000000032-1")).toBe("/remito/000000032-1?imprimir=1");
+    expect(urlParaImprimirRemito("A 1/2")).toBe("/remito/A%201%2F2?imprimir=1");
+  });
+
+  it("abrirRemito abre esa URL en una pestaña nueva", () => {
+    const abrir = vi.spyOn(window, "open").mockImplementation(() => null);
+    abrirRemito("000000032-1");
+    expect(abrir).toHaveBeenCalledWith(
+      "/remito/000000032-1?imprimir=1",
+      "_blank",
+      "noopener,noreferrer"
+    );
   });
 });
