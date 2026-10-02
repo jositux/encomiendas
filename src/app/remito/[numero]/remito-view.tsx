@@ -1,12 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Printer } from "lucide-react";
+import { flushSync } from "react-dom";
+import { useRouter } from "next/navigation";
+import { Loader2, Lock, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Barcode39 } from "@/components/shared/barcode39";
 import { CopyButton } from "@/components/shared/copy-button";
 import { formatCurrency, formatDateTime } from "@/lib/format";
-import type { RemitoApi } from "@/server/services/envios";
+import { registrarImpresionRemitoAction } from "@/server/actions";
+import type { ImpresionRegistradaApi, RemitoApi } from "@/server/services/envios";
 
 const TIPO_LABEL: Record<string, string> = {
   paqueteria: "Paquetería",
@@ -35,7 +38,130 @@ function money(value: string | null) {
   return formatCurrency(Number(value));
 }
 
+// Rechazos del registro que significan "este envío ya no se imprime" (se
+// anuló, o quedó con el alta incompleta, con la página abierta). No tiene
+// sentido reintentar: se muestra el mensaje del backend y se recarga, para
+// que la página quede como la de cualquier remito bloqueado.
+const CODIGOS_DE_BLOQUEO = ["ENVIO_ANULADO", "ALTA_INCOMPLETA"];
+
+const AVISO_SIN_HABILITACION = "Para imprimir este remito usá el botón Imprimir";
+
+function nuevoClientUuid(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `cid-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+}
+
+// "dd/mm/aaaa hh:mm" de la leyenda de reimpresión.
+function fechaDeImpresion(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const dos = (n: number) => String(n).padStart(2, "0");
+  return `${dos(d.getDate())}/${dos(d.getMonth() + 1)}/${d.getFullYear()} ${dos(d.getHours())}:${dos(d.getMinutes())}`;
+}
+
+// Desde la segunda impresión el papel lo dice, en las dos copias.
+export function leyendaDeReimpresion(impresion: ImpresionRegistradaApi): string | null {
+  if (impresion.numero < 2) return null;
+  return `REIMPRESIÓN n.º ${impresion.numero} · ${fechaDeImpresion(impresion.impresoEn)} · ${impresion.impresoPor.nombre}`;
+}
+
+// Registro de impresión (2026-10-02). Regla del usuario: SIN REGISTRO NO SE
+// IMPRIME. Toda impresión de un remito pasa por esta página, así que la
+// regla vive acá:
+//
+// - "Imprimir" primero registra la impresión en el backend (POST
+//   /envios/{envioId}/impresiones-remito) y recién con la respuesta abre
+//   el diálogo. Si el registro falla, no hay diálogo.
+// - El registro HABILITA un solo diálogo. Mientras no hay habilitación, el
+//   remito está oculto en impresión y en su lugar sale un aviso: es lo que
+//   imprime un Ctrl+P o el menú del navegador. Al cerrarse el diálogo
+//   (`afterprint`) la habilitación se consume; volver a imprimir exige
+//   volver a registrar.
+// - La respuesta trae el número de impresión: desde la segunda, las dos
+//   copias llevan la leyenda "REIMPRESIÓN n.º N · fecha · usuario".
+// - Si el backend dice que el envío no se imprime (`remito.impresion`, p.
+//   ej. anulado), no hay botón: se muestra su mensaje.
+//
+// "Impreso" significa "se habilitó un diálogo": el navegador no informa si
+// salió papel, se guardó un PDF o se canceló.
 export function RemitoView({ remito }: { remito: RemitoApi }) {
+  const router = useRouter();
+  const [habilitacion, setHabilitacion] = React.useState<ImpresionRegistradaApi | null>(null);
+  const [registrando, setRegistrando] = React.useState(false);
+  const [error, setError] = React.useState("");
+  // Bloqueo que llegó como 409 al registrar: se muestra enseguida, sin
+  // esperar a que la recarga traiga `remito.impresion` actualizado.
+  const [bloqueoAlRegistrar, setBloqueoAlRegistrar] = React.useState<string | null>(null);
+
+  // Un clientUuid por INTENTO de impresión: se reusa en los reintentos de
+  // ese intento (si el registro llegó pero la respuesta se perdió, no queda
+  // una segunda impresión en la historia) y se descarta al habilitar, para
+  // que la impresión siguiente sea un acto nuevo.
+  const intentoRef = React.useRef<string | null>(null);
+  // Guarda sincrónica contra el doble clic: `registrando` (estado) recién
+  // se ve en el render siguiente.
+  const registrandoRef = React.useRef(false);
+
+  const bloqueo = bloqueoAlRegistrar ?? remito.impresion?.bloqueo?.mensaje ?? null;
+  const imprimible = bloqueoAlRegistrar === null && remito.impresion?.permitida === true;
+
+  // Registra la impresión y deja la página habilitada para UN diálogo.
+  // Devuelve si quedó habilitada (y por qué no, para el modo embebido).
+  const registrarYHabilitar = React.useCallback(async (): Promise<
+    { ok: true } | { ok: false; mensaje: string }
+  > => {
+    if (registrandoRef.current) return { ok: false, mensaje: "" };
+    registrandoRef.current = true;
+    setRegistrando(true);
+    setError("");
+    const clientUuid = (intentoRef.current ??= nuevoClientUuid());
+    try {
+      const r = await registrarImpresionRemitoAction(remito.envioId, clientUuid);
+      if (r.ok) {
+        intentoRef.current = null;
+        // flushSync: la habilitación (y la leyenda de reimpresión) tienen
+        // que estar en el DOM antes de que quien llama abra el diálogo.
+        flushSync(() => setHabilitacion(r.impresion));
+        return { ok: true };
+      }
+      if (CODIGOS_DE_BLOQUEO.includes(r.code)) {
+        intentoRef.current = null;
+        setBloqueoAlRegistrar(r.message);
+        router.refresh();
+        return { ok: false, mensaje: r.message };
+      }
+      // Un uuid gastado en otro acto no sirve para reintentar.
+      if (r.code === "CLIENT_UUID_REUTILIZADO") intentoRef.current = null;
+      const mensaje = r.message || r.title;
+      setError(mensaje);
+      return { ok: false, mensaje };
+    } catch {
+      // Error que no vino del backend como rechazo (red caída, etc.): el
+      // clientUuid se conserva, el reintento es el mismo acto.
+      const mensaje = "No se pudo comunicar con el servidor.";
+      setError(mensaje);
+      return { ok: false, mensaje };
+    } finally {
+      registrandoRef.current = false;
+      setRegistrando(false);
+    }
+  }, [remito.envioId, router]);
+
+  async function imprimir() {
+    const r = await registrarYHabilitar();
+    if (r.ok) window.print();
+  }
+
+  // Una habilitación, un diálogo: se consume cuando el diálogo se cierra,
+  // haya salido papel o no. También corre tras un Ctrl+P sin habilitación,
+  // donde no hay nada que consumir.
+  React.useEffect(() => {
+    const consumir = () => setHabilitacion(null);
+    window.addEventListener("afterprint", consumir);
+    return () => window.removeEventListener("afterprint", consumir);
+  }, []);
+
   // NOTA-2026-09-28-02: si esta página está embebida en el <iframe> oculto
   // de imprimir-remito.ts (impresión automática al terminar un alta),
   // avisarle a la ventana padre que ya terminó de pintar -- código de
@@ -44,18 +170,40 @@ export function RemitoView({ remito }: { remito: RemitoApi }) {
   // los del padre, así que acá abajo el barcode ya está listo. Si la
   // página se abre suelta (pestaña nueva, visita directa) esto no hace
   // nada: window.parent es la misma ventana.
+  //
+  // 2026-10-02: la impresión automática cumple la misma regla que el
+  // botón. La página embebida REGISTRA antes de avisar "remito-listo"; si
+  // el registro falla (o el envío no se imprime) avisa "remito-error" con
+  // el motivo, y la ventana madre no llama a print(). El ref evita un
+  // segundo registro cuando React monta el efecto dos veces (modo estricto
+  // en desarrollo).
+  const embebidoRef = React.useRef(false);
   React.useEffect(() => {
-    if (window.parent !== window) {
-      window.parent.postMessage(
-        { tipo: "remito-listo", numero: remito.numero },
-        window.location.origin
-      );
+    if (window.parent === window || embebidoRef.current) return;
+    embebidoRef.current = true;
+    const avisar = (mensaje: { tipo: string; mensaje?: string }) =>
+      window.parent.postMessage({ ...mensaje, numero: remito.numero }, window.location.origin);
+
+    if (!imprimible) {
+      avisar({ tipo: "remito-error", mensaje: bloqueo ?? "" });
+      return;
     }
-  }, [remito.numero]);
+    // En una microtarea, no en el cuerpo del efecto: el registro cambia
+    // estado (botón ocupado, habilitación) y eso no va sincrónico acá.
+    queueMicrotask(() => {
+      void registrarYHabilitar().then((r) =>
+        avisar(r.ok ? { tipo: "remito-listo" } : { tipo: "remito-error", mensaje: r.mensaje })
+      );
+    });
+    // Solo al montar: `imprimible`/`bloqueo` son los de la carga inicial.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const leyenda = habilitacion ? leyendaDeReimpresion(habilitacion) : null;
 
   return (
     <div className="mx-auto max-w-5xl p-4 print:max-w-none print:p-0">
-      <div className="mb-4 flex items-center justify-between print:hidden">
+      <div className="mb-4 flex items-center justify-between gap-3 print:hidden">
         <div>
           <h1 className="text-lg font-semibold">Remito #{remito.numero}</h1>
           <p className="text-sm text-muted-foreground">
@@ -63,14 +211,57 @@ export function RemitoView({ remito }: { remito: RemitoApi }) {
             {formatDateTime(remito.fechaAlta)}
           </p>
         </div>
-        <Button onClick={() => window.print()} className="gap-1.5">
-          <Printer className="size-4" /> Imprimir
-        </Button>
+        {imprimible ? (
+          <Button onClick={imprimir} disabled={registrando} className="gap-1.5">
+            {registrando ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Printer className="size-4" />
+            )}
+            Imprimir
+          </Button>
+        ) : bloqueo ? (
+          <p
+            role="note"
+            className="flex items-start gap-2 rounded-md bg-muted/50 p-2.5 text-xs text-muted-foreground"
+          >
+            <Lock className="mt-0.5 size-3.5 shrink-0" />
+            {bloqueo}
+          </p>
+        ) : null}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 print:grid-cols-2 print:gap-3">
-        <Panel remito={remito} etiqueta="Original" completo />
-        <Panel remito={remito} etiqueta="Duplicado" completo={false} />
+      {error && (
+        <p
+          role="alert"
+          className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-sm text-destructive print:hidden"
+        >
+          <span className="block font-medium">
+            No se pudo registrar la impresión del remito, así que no se imprimió.
+          </span>
+          <span className="block">{error}</span>
+          <span className="block">Tocá Imprimir para reintentar.</span>
+        </p>
+      )}
+
+      {/* Lo único que sale en papel si se imprime sin habilitación (Ctrl+P,
+          menú del navegador, o un remito que no se imprime). */}
+      {!habilitacion && (
+        <p className="hidden p-8 text-center text-base print:block" data-aviso-impresion>
+          {imprimible ? AVISO_SIN_HABILITACION : (bloqueo ?? AVISO_SIN_HABILITACION)}
+        </p>
+      )}
+
+      <div
+        className={
+          habilitacion
+            ? "grid grid-cols-1 gap-4 sm:grid-cols-2 print:grid-cols-2 print:gap-3"
+            : "grid grid-cols-1 gap-4 sm:grid-cols-2 print:hidden"
+        }
+        data-remito-habilitado={habilitacion ? "si" : "no"}
+      >
+        <Panel remito={remito} etiqueta="Original" completo leyenda={leyenda} />
+        <Panel remito={remito} etiqueta="Duplicado" completo={false} leyenda={leyenda} />
       </div>
     </div>
   );
@@ -80,9 +271,13 @@ function Panel({
   remito,
   etiqueta,
   completo,
+  leyenda,
 }: {
   remito: RemitoApi;
   etiqueta: string;
+  // "REIMPRESIÓN n.º N · fecha · usuario" desde la segunda impresión; null
+  // en la primera (el papel sale como siempre) y mientras no hay diálogo.
+  leyenda: string | null;
   // Original = se queda con la empresa y acompaña el envío por depósito:
   // lleva código de barras y el bloque de firma de entrega. Duplicado = se
   // lo lleva el cliente en el momento del alta, antes de que exista ninguna
@@ -107,6 +302,12 @@ function Panel({
           {etiqueta}
         </span>
       </div>
+
+      {leyenda && (
+        <p className="border border-dashed px-2 py-1 text-center text-xs font-semibold print:border-black print:text-black">
+          {leyenda}
+        </p>
+      )}
 
       {/* Número de seguimiento + código de barras: antes iban en la misma
           fila (número a la izquierda, barra a la derecha) y el código de

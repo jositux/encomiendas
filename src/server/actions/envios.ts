@@ -123,3 +123,27 @@ export async function modificarEnvioAction(
     throw err;
   }
 }
+
+// POST /envios/{envioId}/impresiones-remito desde la pagina del remito. No
+// revalida nada: imprimir no cambia ningun dato que otra pantalla tenga
+// cacheado (Seguimiento siempre pide la historia de nuevo). `code` va
+// aparte para que la pagina distinga un bloqueo (ENVIO_ANULADO /
+// ALTA_INCOMPLETA: el envio dejo de ser imprimible con la pagina abierta)
+// de un error para reintentar.
+export async function registrarImpresionRemitoAction(
+  envioId: string,
+  clientUuid: string
+): Promise<
+  | { ok: true; impresion: Awaited<ReturnType<typeof enviosService.registrarImpresionRemito>> }
+  | { ok: false; code: string; title: string; message: string }
+> {
+  try {
+    const impresion = await enviosService.registrarImpresionRemito(envioId, clientUuid);
+    return { ok: true, impresion };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return { ok: false, code: err.code, title: err.title, message: err.message };
+    }
+    throw err;
+  }
+}
