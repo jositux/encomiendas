@@ -59,7 +59,8 @@ export function RemitoView({ remito }: { remito: RemitoApi }) {
         <div>
           <h1 className="text-lg font-semibold">Remito #{remito.numero}</h1>
           <p className="text-sm text-muted-foreground">
-            Guía {remito.guiaDiaria} · {formatDateTime(remito.fechaAlta)}
+            {remito.guiaDiaria ? `Guía ${remito.guiaDiaria} · ` : ""}
+            {formatDateTime(remito.fechaAlta)}
           </p>
         </div>
         <Button onClick={() => window.print()} className="gap-1.5">
@@ -136,15 +137,24 @@ function Panel({
           #{remito.numero}
           <CopyButton value={remito.numero} label="Número de envío" />
         </p>
-        <p className="flex items-center gap-1 text-xs text-muted-foreground print:text-black">
-          <span>
-            Guía {remito.guiaDiaria}
-            {remito.remitoManualNumero ? ` · Remito manual ${remito.remitoManualNumero}` : ""}
-          </span>
-          {remito.remitoManualNumero && (
-            <CopyButton value={remito.remitoManualNumero} label="Remito manual" />
-          )}
-        </p>
+        {/* `guiaDiaria` es nullable en el contrato (RemitoDeEnvioDto): un
+            envío sin guía asignada no imprime "Guía" suelto -- queda solo
+            el remito manual, o nada si tampoco lo tiene. */}
+        {(remito.guiaDiaria || remito.remitoManualNumero) && (
+          <p className="flex items-center gap-1 text-xs text-muted-foreground print:text-black">
+            <span>
+              {[
+                remito.guiaDiaria ? `Guía ${remito.guiaDiaria}` : null,
+                remito.remitoManualNumero ? `Remito manual ${remito.remitoManualNumero}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+            {remito.remitoManualNumero && (
+              <CopyButton value={remito.remitoManualNumero} label="Remito manual" />
+            )}
+          </p>
+        )}
         <p className="text-xs text-muted-foreground print:text-black">
           {formatDateTime(remito.fechaAlta)}
         </p>

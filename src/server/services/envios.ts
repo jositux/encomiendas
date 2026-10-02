@@ -308,7 +308,8 @@ export interface RemitoApi {
   // codificar directo en el codigo de barras (Code 39).
   codigoBarras: string;
   fechaAlta: string;
-  guiaDiaria: string;
+  // Nullable en el contrato (RemitoDeEnvioDto), igual que en EnvioApi.
+  guiaDiaria: string | null;
   remitoManualNumero: string | null;
   origen: { localidad: string };
   destino: { localidad: string };
