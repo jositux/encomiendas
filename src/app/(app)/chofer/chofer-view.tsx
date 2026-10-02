@@ -26,7 +26,6 @@ import {
 import { LoQueLlevas } from "@/components/custodia/lo-que-llevas";
 import type { PlanillaApi, ResultadoEnviosEnCustodia } from "@/server/services/custodia";
 import type { EnvioApi } from "@/server/services/envios";
-import type { LocalidadBackend } from "@/types";
 
 // NOTA-2026-09-28-03: "Buscar planilla por código" y "Buscar planilla"
 // (búsqueda de planilla + su detalle con Cargar/Recibir y las acciones por
@@ -41,7 +40,6 @@ export function ChoferView({
   permisos,
   usuarioId,
   loQueLlevaInicial,
-  localidades,
 }: {
   // 2026-09-17 (sección 29 del plan / claude/esquema-permisos.md): se
   // pasa hacia abajo a PlanillaDetalle y EnvioDePlanillaRow para gatear en
@@ -60,7 +58,6 @@ export function ChoferView({
   // (GET /custodia/envios). La carga inicial la hace la página; acá se
   // vuelve a pedir después de cada acto que puede cambiarla.
   loQueLlevaInicial: ResultadoEnviosEnCustodia;
-  localidades: LocalidadBackend[];
 }) {
   const [planillaActiva, setPlanillaActiva] = React.useState<PlanillaApi | null>(null);
   const [loQueLleva, setLoQueLleva] = React.useState(loQueLlevaInicial);
@@ -148,11 +145,7 @@ export function ChoferView({
         onActo={refrescarLoQueLleva}
       />
 
-      <LoQueLlevas
-        estado={loQueLleva}
-        localidades={localidades}
-        actualizando={actualizandoLoQueLleva}
-      />
+      <LoQueLlevas estado={loQueLleva} actualizando={actualizandoLoQueLleva} />
     </div>
   );
 }
