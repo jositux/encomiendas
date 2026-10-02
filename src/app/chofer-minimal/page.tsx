@@ -1,4 +1,5 @@
 import { getSession } from "@/server/session";
+import { listLoQueLleva } from "@/server/services/custodia";
 import { ChoferView } from "@/app/(app)/chofer/chofer-view";
 
 // Misma pantalla y misma lógica que (app)/chofer/page.tsx (ver ese archivo
@@ -13,11 +14,16 @@ import { ChoferView } from "@/app/(app)/chofer/chofer-view";
 // necesita listDespachos()/listLocalidades().
 export default async function ChoferMinimalPage() {
   const session = await getSession();
+  const usuarioId = session?.usuarioId ?? "";
+  // 2026-10-02: "Lo que llevás". La carga inicial se hace acá; después de
+  // cada acto la vista la vuelve a pedir.
+  const loQueLleva = await listLoQueLleva(usuarioId);
 
   return (
     <ChoferView
       permisos={session?.permisos ?? []}
-      usuarioId={session?.usuarioId ?? ""}
+      usuarioId={usuarioId}
+      loQueLlevaInicial={loQueLleva}
     />
   );
 }

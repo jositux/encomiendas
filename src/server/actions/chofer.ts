@@ -4,7 +4,12 @@ import * as custodiaService from "../services/custodia";
 import { comoAccionResultado, comoResultado } from "./shared";
 import type { AccionResultado, ResultadoConDato } from "./shared";
 import { ApiError } from "../api-client";
-import type { DespachoApi, PlanillaApi, RespuestaCustodia } from "../services/custodia";
+import type {
+  DespachoApi,
+  PlanillaApi,
+  RespuestaCustodia,
+  ResultadoEnviosEnCustodia,
+} from "../services/custodia";
 
 // -- Chofer (Despacho -> Planilla -> Custodia/Entrega) -----------------------
 // Real (src/server/services/custodia.ts). Ver esa sección de
@@ -77,4 +82,12 @@ export async function registrarIncidenciaAction(
   data: { motivo: string; bultoNumero?: number; detalle?: string }
 ): Promise<AccionResultado> {
   return comoAccionResultado(() => custodiaService.registrarIncidencia(envioNumero, data));
+}
+
+// -- "Lo que llevás" (2026-10-02) --------------------------------------------
+// GET /custodia/envios del propio usuario, para volver a pedir la lista
+// después de un acto (cargar, recibir, entregar, intento fallido). Es una
+// lectura: no revalida nada. El rechazo del backend ya viene como dato.
+export async function listLoQueLlevaAction(usuarioId: string): Promise<ResultadoEnviosEnCustodia> {
+  return custodiaService.listLoQueLleva(usuarioId);
 }

@@ -1,7 +1,8 @@
 import "server-only";
 
-import { apiFetch, apiFetchColeccion, nuevoClientUuid } from "../api-client";
+import { ApiError, apiFetch, apiFetchColeccion, nuevoClientUuid } from "../api-client";
 import { requireToken } from "./shared";
+import type { EnvioApi } from "./envios";
 
 // Vista de chofer: Planilla (por código) -> Custodia (carga/recepcion) ->
 // Entrega/Intento fallido/Incidencia por envío. Distinto de /custodia
@@ -306,4 +307,99 @@ export async function registrarIncidencia(
       occurredAt: new Date().toISOString(),
     },
   });
+}
+
+// -- Custodia por persona (2026-10-02) ---------------------------------------
+// "Qué tiene cada uno ahora": los envíos que están en custodia de una
+// persona. Qué puede ver quien consulta lo decide el BACKEND según sus
+// permisos, y lo informa en `alcance`; el frontend solo pinta según ese
+// valor, no recalcula la regla:
+//   - "propio": solo lo que tiene él (p. ej. un chofer).
+//   - "base":   lo suyo más lo que otras personas tienen parado en sus
+//               bases (operador). No incluye lo que llevan los choferes.
+//   - "todo":   todo (supervisor, administración).
+// Un filtro que excede el alcance es 403 FUERA_DE_ALCANCE, no una lista
+// vacía.
+export type AlcanceDeCustodia = "propio" | "base" | "todo";
+
+// Quién tiene el envío y en qué punto, ya resuelto a nombres por el
+// backend: esta pantalla no depende de GET /usuarios ni de GET /puntos
+// (que casi ningún rol puede leer).
+export interface CustodiaDeEnvioApi {
+  usuario: { id: string; nombre: string };
+  punto: { id: string; nombre: string } | null;
+}
+
+// Fila de GET /custodia/envios (EnvioEnCustodiaFilaDto en el contrato): el
+// envío como en las otras listas, más quién lo tiene y el nombre de la
+// localidad de destino ya resuelto -- tampoco hace falta GET /localidades.
+export type EnvioEnCustodiaApi = EnvioApi & {
+  custodia: CustodiaDeEnvioApi;
+  localidadDestinoNombre: string;
+};
+
+export interface PaginaDeEnviosEnCustodia {
+  datos: EnvioEnCustodiaApi[];
+  total: number;
+  limite: number;
+  offset: number;
+  alcance: AlcanceDeCustodia;
+}
+
+// GET /custodia/envios — paginado de verdad, alta más reciente primero.
+// `usuarioId` filtra por custodio; `puntoId` por el punto de la custodia.
+export async function listEnviosEnCustodia(
+  filtro: { usuarioId?: string; puntoId?: string; limite?: number; offset?: number } = {}
+): Promise<PaginaDeEnviosEnCustodia> {
+  const token = await requireToken();
+  const qs = new URLSearchParams();
+  if (filtro.usuarioId) qs.set("usuarioId", filtro.usuarioId);
+  if (filtro.puntoId) qs.set("puntoId", filtro.puntoId);
+  qs.set("limite", String(filtro.limite ?? 50));
+  if (filtro.offset) qs.set("offset", String(filtro.offset));
+  return apiFetch<PaginaDeEnviosEnCustodia>(`/custodia/envios?${qs.toString()}`, { token });
+}
+
+export interface CustodioApi {
+  usuario: { id: string; nombre: string };
+  cantidad: number;
+}
+
+// GET /custodia/custodios — quiénes tienen envíos, dentro del mismo
+// alcance, con cuántos tiene cada uno. Ordenado por nombre. Paginado como
+// todas las listas del backend (50 por defecto, 200 de máximo): se pide con
+// el máximo porque alimenta el selector de persona de la pantalla Custodia.
+export interface PaginaDeCustodios {
+  datos: CustodioApi[];
+  total: number;
+  limite: number;
+  offset: number;
+  alcance: AlcanceDeCustodia;
+}
+
+export async function listCustodios(): Promise<PaginaDeCustodios> {
+  const token = await requireToken();
+  return apiFetch<PaginaDeCustodios>("/custodia/custodios?limite=200", { token });
+}
+
+// "Lo que llevás" de la pantalla del chofer: los envíos en custodia de UNA
+// persona (quien mira la pantalla). Se pide con `usuarioId` propio, que
+// todo alcance admite, para que también quien ve más que lo suyo (un
+// operador o un supervisor que abre /chofer) vea ahí solo lo que tiene él.
+// Devuelve el rechazo del backend como dato en vez de lanzarlo: es una
+// sección secundaria y no puede tirar abajo la pantalla del chofer.
+export type ResultadoEnviosEnCustodia =
+  | { ok: true; data: PaginaDeEnviosEnCustodia }
+  | { ok: false; title: string; message: string };
+
+const LIMITE_LO_QUE_LLEVAS = 200;
+
+export async function listLoQueLleva(usuarioId: string): Promise<ResultadoEnviosEnCustodia> {
+  try {
+    const data = await listEnviosEnCustodia({ usuarioId, limite: LIMITE_LO_QUE_LLEVAS });
+    return { ok: true, data };
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, title: err.title, message: err.message };
+    throw err;
+  }
 }

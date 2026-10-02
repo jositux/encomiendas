@@ -1,4 +1,5 @@
 import { getSession } from "@/server/session";
+import { listLoQueLleva } from "@/server/services/custodia";
 import { ChoferView } from "./chofer-view";
 
 // Vista de chofer: buscar una planilla por código (QR o código corto) ->
@@ -16,6 +17,10 @@ import { ChoferView } from "./chofer-view";
 // (`GET /planillas/{codigo}`, requiere solo `planillas:leer`).
 export default async function ChoferPage() {
   const session = await getSession();
+  const usuarioId = session?.usuarioId ?? "";
+  // 2026-10-02: "Lo que llevás". La carga inicial se hace acá; después de
+  // cada acto la vista la vuelve a pedir.
+  const loQueLleva = await listLoQueLleva(usuarioId);
 
   return (
     <ChoferView
@@ -26,7 +31,8 @@ export default async function ChoferPage() {
       // 2026-09-17 (sección 31 del plan): para decidir en BuscadorEnvioSuelto
       // si un envío EN_CUSTODIA ya está en mi custodia (mostrar Entregar/
       // Intento/Incidencia) o en la de otro (mostrar Recibir).
-      usuarioId={session?.usuarioId ?? ""}
+      usuarioId={usuarioId}
+      loQueLlevaInicial={loQueLleva}
     />
   );
 }

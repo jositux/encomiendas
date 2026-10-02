@@ -10,7 +10,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { buscarPlanillaPorCodigoAction, recibirEnvioSueltoAction, buscarSeguimientoAction } from "@/server/actions";
+import {
+  buscarPlanillaPorCodigoAction,
+  recibirEnvioSueltoAction,
+  buscarSeguimientoAction,
+  listLoQueLlevaAction,
+} from "@/server/actions";
 import {
   BuscadorPlanillaPorCodigo,
   PlanillaDetalle,
@@ -18,7 +23,8 @@ import {
   guiaCorta,
   envioApiComoFilaDePlanilla,
 } from "@/components/custodia/planilla-parts";
-import type { PlanillaApi } from "@/server/services/custodia";
+import { LoQueLlevas } from "@/components/custodia/lo-que-llevas";
+import type { PlanillaApi, ResultadoEnviosEnCustodia } from "@/server/services/custodia";
 import type { EnvioApi } from "@/server/services/envios";
 
 // NOTA-2026-09-28-03: "Buscar planilla por código" y "Buscar planilla"
@@ -33,6 +39,7 @@ import type { EnvioApi } from "@/server/services/envios";
 export function ChoferView({
   permisos,
   usuarioId,
+  loQueLlevaInicial,
 }: {
   // 2026-09-17 (sección 29 del plan / claude/esquema-permisos.md): se
   // pasa hacia abajo a PlanillaDetalle y EnvioDePlanillaRow para gatear en
@@ -47,8 +54,26 @@ export function ChoferView({
   // si un envío EN_CUSTODIA ya está en mi custodia (mostrar Entregar/
   // Intento/Incidencia) o en la de otro (mostrar Recibir).
   usuarioId: string;
+  // 2026-10-02: "Lo que llevás" -- los envíos en custodia de este usuario
+  // (GET /custodia/envios). La carga inicial la hace la página; acá se
+  // vuelve a pedir después de cada acto que puede cambiarla.
+  loQueLlevaInicial: ResultadoEnviosEnCustodia;
 }) {
   const [planillaActiva, setPlanillaActiva] = React.useState<PlanillaApi | null>(null);
+  const [loQueLleva, setLoQueLleva] = React.useState(loQueLlevaInicial);
+  const [actualizandoLoQueLleva, setActualizandoLoQueLleva] = React.useState(false);
+
+  // Cargar o recibir una planilla, recibir un envío suelto, entregar o
+  // registrar un intento fallido cambian quién tiene el envío: después de
+  // cualquiera de esos actos la lista se pide de nuevo.
+  async function refrescarLoQueLleva() {
+    setActualizandoLoQueLleva(true);
+    try {
+      setLoQueLleva(await listLoQueLlevaAction(usuarioId));
+    } finally {
+      setActualizandoLoQueLleva(false);
+    }
+  }
 
   async function buscarPorCodigo(codigo: string): Promise<boolean> {
     const r = await buscarPlanillaPorCodigoAction(codigo);
@@ -105,10 +130,22 @@ export function ChoferView({
       />
 
       {planillaActiva && (
-        <PlanillaDetalle planilla={planillaActiva} onRefrescar={refrescarActiva} permisos={permisos} />
+        <PlanillaDetalle
+          planilla={planillaActiva}
+          onRefrescar={async () => {
+            await Promise.all([refrescarActiva(), refrescarLoQueLleva()]);
+          }}
+          permisos={permisos}
+        />
       )}
 
-      <BuscadorEnvioSuelto permisos={permisos} usuarioId={usuarioId} />
+      <BuscadorEnvioSuelto
+        permisos={permisos}
+        usuarioId={usuarioId}
+        onActo={refrescarLoQueLleva}
+      />
+
+      <LoQueLlevas estado={loQueLleva} actualizando={actualizandoLoQueLleva} />
     </div>
   );
 }
@@ -121,7 +158,11 @@ export function ChoferView({
 function BuscadorEnvioSuelto({
   permisos,
   usuarioId,
+  onActo,
 }: {
+  // Después de un acto sobre el envío (recibir, entregar, intento
+  // fallido): la pantalla vuelve a pedir "Lo que llevás".
+  onActo: () => Promise<void>;
   permisos: string[];
   // 2026-09-17 (sección 31 del plan): para saber si `custodiaActualUsuarioId`
   // del envío encontrado soy yo (Entregar/Intento/Incidencia) u otro
@@ -195,7 +236,7 @@ function BuscadorEnvioSuelto({
       const r = await recibirEnvioSueltoAction(envio.numero);
       if (r.ok) {
         toast.success(r.data.evento.duplicado ? "Ya estaba en tu custodia" : "Envío recibido");
-        await buscar();
+        await Promise.all([buscar(), onActo()]);
       } else {
         toast.error(r.title, { description: r.message });
       }
@@ -277,7 +318,9 @@ function BuscadorEnvioSuelto({
         {envio && enMiCustodia && (
           <EnvioDePlanillaRow
             envio={envioApiComoFilaDePlanilla(envio)}
-            onRefrescar={async () => buscar()}
+            onRefrescar={async () => {
+              await Promise.all([buscar(), onActo()]);
+            }}
             permisos={permisos}
           />
         )}
