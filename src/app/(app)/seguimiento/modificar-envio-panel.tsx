@@ -35,6 +35,7 @@ import {
   permiteValorDeclarado,
 } from "@/app/(app)/encomiendas/nueva/nueva-view.helpers";
 import { cn } from "@/lib/utils";
+import { formatImporte } from "@/lib/format";
 import { sanitizeIntegerInput, sanitizeMoneyInput } from "@/lib/validation";
 import { modificarEnvioAction } from "@/server/actions";
 import type {
@@ -43,7 +44,9 @@ import type {
   LugarPagoApi,
   TipoEnvioApi,
 } from "@/server/services/envios";
+import type { CamposEditables } from "@/server/services/seguimiento";
 import {
+  AVISO_IMPORTES_NO_EDITABLES,
   CODIGOS_DE_BLOQUEO,
   MOTIVO_MAX,
   cambiosDelFormulario,
@@ -65,6 +68,7 @@ import {
 export function ModificarEnvioPanel({
   envio,
   destino,
+  campos = "todos",
   abierto,
   onCerrar,
   onGuardado,
@@ -72,6 +76,9 @@ export function ModificarEnvioPanel({
 }: {
   envio: EnvioApi;
   destino: { localidad: string; sector: string };
+  // Qué deja modificar el backend a este usuario (`edicion.campos`). Con
+  // "sin_importes" los siete importes se ven pero no se editan ni viajan.
+  campos?: CamposEditables;
   abierto: boolean;
   onCerrar: () => void;
   onGuardado: () => void;
@@ -86,6 +93,7 @@ export function ModificarEnvioPanel({
         <Formulario
           envio={envio}
           destino={destino}
+          campos={campos}
           onCerrar={onCerrar}
           onGuardado={onGuardado}
           onBloqueado={onBloqueado}
@@ -104,12 +112,14 @@ function nuevoClientUuid(): string {
 function Formulario({
   envio,
   destino,
+  campos,
   onCerrar,
   onGuardado,
   onBloqueado,
 }: {
   envio: EnvioApi;
   destino: { localidad: string; sector: string };
+  campos: CamposEditables;
   onCerrar: () => void;
   onGuardado: () => void;
   onBloqueado: () => void;
@@ -125,7 +135,8 @@ function Formulario({
   // deja un segundo evento en la historia.
   const [clientUuid] = React.useState(nuevoClientUuid);
 
-  const cambios = cambiosDelFormulario(inicial, form);
+  const editaImportes = campos !== "sin_importes";
+  const cambios = cambiosDelFormulario(inicial, form, campos);
   const sinCambios = Object.keys(cambios).length === 0;
 
   function set<K extends keyof FormModificarEnvio>(campo: K, valor: FormModificarEnvio[K]) {
@@ -139,7 +150,7 @@ function Formulario({
   }
 
   async function guardar() {
-    const next = validarFormulario(inicial, form, motivo);
+    const next = validarFormulario(inicial, form, motivo, campos);
     setErrores(next);
     if (Object.keys(next).length > 0 || sinCambios) return;
 
@@ -156,8 +167,9 @@ function Formulario({
       }
       if (CODIGOS_DE_BLOQUEO.includes(r.code)) {
         // El envío cambió de situación con el panel abierto (p. ej. entró
-        // a una planilla): se cierra, se avisa y el seguimiento recargado
-        // muestra el aviso de bloqueo que corresponda.
+        // a una planilla, o salió de su origen y ya no se le pueden tocar
+        // los importes): se cierra, se avisa con el detalle del backend y
+        // el seguimiento recargado muestra lo que corresponda.
         toast.error(r.title, { description: r.message });
         onBloqueado();
         return;
@@ -314,23 +326,25 @@ function Formulario({
             Envío e importes
           </h3>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Campo id="mod-tipo" label="Tipo">
-              <Select
-                value={form.tipo}
-                onValueChange={(v) => setForm((prev) => conTipo(prev, v as TipoEnvioApi))}
-              >
-                <SelectTrigger id="mod-tipo" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIPOS.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Campo>
+            {editaImportes && (
+              <Campo id="mod-tipo" label="Tipo">
+                <Select
+                  value={form.tipo}
+                  onValueChange={(v) => setForm((prev) => conTipo(prev, v as TipoEnvioApi))}
+                >
+                  <SelectTrigger id="mod-tipo" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIPOS.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Campo>
+            )}
             <Campo id="mod-bultos" label="Bultos" error={errores.bultos}>
               <Input
                 id="mod-bultos"
@@ -344,42 +358,46 @@ function Formulario({
                 aria-invalid={!!errores.bultos}
               />
             </Campo>
-            <Campo id="mod-lugar-pago" label="Lugar de pago">
-              <Select
-                value={form.lugarPago}
-                onValueChange={(v) => set("lugarPago", v as LugarPagoApi)}
-              >
-                <SelectTrigger id="mod-lugar-pago" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {lugaresPago.map((l) => (
-                    <SelectItem key={l.value} value={l.value}>
-                      {l.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Campo>
-            <Campo id="mod-forma-pago" label="Forma de pago">
-              <Select
-                value={form.formaPago}
-                onValueChange={(v) => set("formaPago", v as FormaPagoApi)}
-                disabled={!permiteElegirFormaPago(form.tipo)}
-              >
-                <SelectTrigger id="mod-forma-pago" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FORMAS_PAGO.map((f) => (
-                    <SelectItem key={f.value} value={f.value}>
-                      {f.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Campo>
-            {permiteGastoYFlete(form.tipo) && (
+            {editaImportes && (
+              <Campo id="mod-lugar-pago" label="Lugar de pago">
+                <Select
+                  value={form.lugarPago}
+                  onValueChange={(v) => set("lugarPago", v as LugarPagoApi)}
+                >
+                  <SelectTrigger id="mod-lugar-pago" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lugaresPago.map((l) => (
+                      <SelectItem key={l.value} value={l.value}>
+                        {l.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Campo>
+            )}
+            {editaImportes && (
+              <Campo id="mod-forma-pago" label="Forma de pago">
+                <Select
+                  value={form.formaPago}
+                  onValueChange={(v) => set("formaPago", v as FormaPagoApi)}
+                  disabled={!permiteElegirFormaPago(form.tipo)}
+                >
+                  <SelectTrigger id="mod-forma-pago" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FORMAS_PAGO.map((f) => (
+                      <SelectItem key={f.value} value={f.value}>
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Campo>
+            )}
+            {editaImportes && permiteGastoYFlete(form.tipo) && (
               <Campo id="mod-flete" label="Flete ($)" error={errores.flete}>
                 <Input
                   id="mod-flete"
@@ -392,7 +410,7 @@ function Formulario({
                 />
               </Campo>
             )}
-            {permiteContrarreembolso(form.tipo) && (
+            {editaImportes && permiteContrarreembolso(form.tipo) && (
               <Campo id="mod-crr" label="Contra reembolso ($)" error={errores.montoCrr}>
                 <Input
                   id="mod-crr"
@@ -405,7 +423,7 @@ function Formulario({
                 />
               </Campo>
             )}
-            {permiteGastoYFlete(form.tipo) && (
+            {editaImportes && permiteGastoYFlete(form.tipo) && (
               <Campo id="mod-gasto" label="Gasto a cobrar en la entrega ($)" error={errores.gasto}>
                 <Input
                   id="mod-gasto"
@@ -418,7 +436,7 @@ function Formulario({
                 />
               </Campo>
             )}
-            {permiteValorDeclarado(form.tipo) && (
+            {editaImportes && permiteValorDeclarado(form.tipo) && (
               <Campo
                 id="mod-valor-declarado"
                 label="Valor declarado ($)"
@@ -453,6 +471,7 @@ function Formulario({
               />
             </Campo>
           </div>
+          {!editaImportes && <ImportesSoloLectura envio={envio} />}
         </section>
 
         <Separator />
@@ -517,6 +536,38 @@ function Campo({
       </Label>
       {children}
       {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+// Los siete importes cuando este usuario no los puede modificar
+// (`edicion.campos = "sin_importes"`): a la vista, con su valor, sin ningún
+// control para editarlos. Se leen del envío, no del formulario.
+function ImportesSoloLectura({ envio }: { envio: EnvioApi }) {
+  const etiqueta = (opciones: { value: string; label: string }[], valor: string) =>
+    opciones.find((o) => o.value === valor)?.label ?? valor;
+  const importe = (valor: string | null | undefined) =>
+    valor === null || valor === undefined ? "—" : formatImporte(valor);
+  const datos: [string, string][] = [
+    ["Tipo", etiqueta(TIPOS, envio.tipo)],
+    ["Lugar de pago", etiqueta(LUGARES_PAGO, envio.lugarPago)],
+    ["Forma de pago", etiqueta(FORMAS_PAGO, envio.formaPago)],
+    ["Flete", importe(envio.fleteImporte)],
+    ["Contra reembolso", importe(envio.contrarreembolsoImporte)],
+    ["Gasto a cobrar en la entrega", importe(envio.gasto)],
+    ["Valor declarado", importe(envio.valorDeclarado)],
+  ];
+  return (
+    <div className="rounded-md bg-muted/50 p-3" role="group" aria-label="Importes">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        {datos.map(([label, valor]) => (
+          <div key={label}>
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className="font-medium">{valor}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-3 text-xs text-muted-foreground">{AVISO_IMPORTES_NO_EDITABLES}</p>
     </div>
   );
 }

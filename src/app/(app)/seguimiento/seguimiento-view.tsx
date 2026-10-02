@@ -617,6 +617,9 @@ function SeguimientoResultado({
       <ModificarEnvioPanel
         envio={envio}
         destino={{ localidad: localidadNombre(envio.localidadDestinoId), sector: sectorNombre }}
+        // Qué puede modificar lo dice el backend. Sin el campo (backend
+        // anterior) el panel se comporta como siempre: todos los campos.
+        campos={edicion?.campos === "sin_importes" ? "sin_importes" : "todos"}
         abierto={panelAbierto}
         onCerrar={() => setPanelAbierto(false)}
         onGuardado={async () => {
