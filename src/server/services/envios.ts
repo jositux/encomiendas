@@ -89,49 +89,50 @@ export interface ActualizarEnvioInput {
   observaciones?: string;
 }
 
-// Wire format real de PATCH /envios/:id — columnas planas. Nombres tomados
-// de EnvioApi (la forma ya confirmada en vivo de la respuesta del backend
-// para este mismo recurso), asumiendo que el DTO de edicion los espeja.
-// remitenteCalle/Numero/Piso/Referencia son una inferencia razonable por
-// simetria con destinatarioCalle/etc (no estan en EnvioApi porque, antes de
-// este changelog, el remitente no tenia domicilio) — si el backend los
-// rechaza algun dia, va a ser con el mismo tipo de error 400 explicito que
-// ya vimos, facil de diagnosticar.
-interface PatchEnvioWire {
+// Wire format real de PATCH /envios/:id — columnas planas, las 22 que
+// declara `ModificarEnvioDto` en el contrato del backend (api/openapi.json,
+// verificado el 2026-10-01). El backend rechaza con 400 cualquier propiedad
+// que no este en esa lista, asi que este tipo es tambien la lista de lo que
+// se puede mandar:
+// - Los campos de domicilio del remitente (remitenteCalle/Numero/Piso/
+//   Referencia) estaban anotados aca como "inferidos": el contrato los
+//   declara con esos nombres.
+// - `clienteRemitenteId` / `clienteDestinatarioId` NO estan en el contrato:
+//   se mandaban desde Carga rapida cuando la fila tenia un cliente
+//   vinculado, y eso era un 400. La cuenta de cliente no se modifica por
+//   esta via.
+// `null` en un campo nullable lo borra; un campo ausente no se toca.
+export interface CamposModificablesEnvio {
   remitenteNombre?: string;
   remitenteTelefono?: string;
-  clienteRemitenteId?: string;
-  remitenteCalle?: string;
-  remitenteNumero?: string;
-  remitentePiso?: string;
-  remitenteReferencia?: string;
+  remitenteCalle?: string | null;
+  remitenteNumero?: string | null;
+  remitentePiso?: string | null;
+  remitenteReferencia?: string | null;
   destinatarioNombre?: string;
   destinatarioTelefono?: string;
   destinatarioCalle?: string;
-  destinatarioNumero?: string;
-  destinatarioPiso?: string;
-  destinatarioReferencia?: string;
-  clienteDestinatarioId?: string;
+  destinatarioNumero?: string | null;
+  destinatarioPiso?: string | null;
+  destinatarioReferencia?: string | null;
   cantidadBultos?: number;
   fleteImporte?: number;
   tipo?: TipoEnvioApi;
   lugarPago?: LugarPagoApi;
   formaPago?: FormaPagoApi;
-  contrarreembolsoImporte?: number;
-  remitoManualNumero?: string;
-  valorDeclarado?: number;
+  contrarreembolsoImporte?: number | null;
+  remitoManualNumero?: string | null;
+  valorDeclarado?: number | null;
   gasto?: number;
-  observaciones?: string;
-  clientUuid: string;
+  observaciones?: string | null;
 }
 
-function aplanarParaPatch(data: ActualizarEnvioInput, clientUuid: string): PatchEnvioWire {
+function aplanarParaPatch(data: ActualizarEnvioInput): CamposModificablesEnvio {
   const { remitente, destinatario, ...resto } = data;
-  const wire: PatchEnvioWire = { ...resto, clientUuid };
+  const wire: CamposModificablesEnvio = { ...resto };
   if (remitente) {
     if (remitente.nombre !== undefined) wire.remitenteNombre = remitente.nombre;
     if (remitente.telefono !== undefined) wire.remitenteTelefono = remitente.telefono;
-    if (remitente.clienteId !== undefined) wire.clienteRemitenteId = remitente.clienteId;
     if (remitente.calle !== undefined) wire.remitenteCalle = remitente.calle;
     if (remitente.numero !== undefined) wire.remitenteNumero = remitente.numero;
     if (remitente.piso !== undefined) wire.remitentePiso = remitente.piso;
@@ -142,6 +143,7 @@ function aplanarParaPatch(data: ActualizarEnvioInput, clientUuid: string): Patch
     // changelog textual, la localidad de origen NO es editable por esta via
     // una vez creado el envio (solo lo es en el alta, POST /envios). Ver
     // claude/plan-integracion-backend.md, seccion 14.
+    // remitente.clienteId tampoco: ver CamposModificablesEnvio.
   }
   if (destinatario) {
     if (destinatario.nombre !== undefined) wire.destinatarioNombre = destinatario.nombre;
@@ -150,12 +152,13 @@ function aplanarParaPatch(data: ActualizarEnvioInput, clientUuid: string): Patch
     if (destinatario.numero !== undefined) wire.destinatarioNumero = destinatario.numero;
     if (destinatario.piso !== undefined) wire.destinatarioPiso = destinatario.piso;
     if (destinatario.referencia !== undefined) wire.destinatarioReferencia = destinatario.referencia;
-    if (destinatario.clienteId !== undefined) wire.clienteDestinatarioId = destinatario.clienteId;
     // destinatario.localidadId / .sectorId NO se mandan: mismo hallazgo que
     // remitente arriba, confirmado en vivo — `localidadDestinoId` y
     // `sectorDestinoId` tambien vienen rechazados con "should not exist" en
     // el PATCH. Localidad/sector de destino tampoco son editables una vez
     // creado el envio, al menos con este DTO.
+    // destinatario.clienteId / .domicilioId tampoco: ver
+    // CamposModificablesEnvio.
   }
   return wire;
 }
@@ -174,6 +177,15 @@ export interface EnvioApi {
   remitoManualNumero: string | null;
   remitenteNombre: string;
   remitenteTelefono: string;
+  // Domicilio del remitente: en el contrato (EnvioFilaDto /
+  // EnvioDelSeguimientoDto) desde el changelog 2026-09-15. Hasta el
+  // 2026-10-01 este tipo no los declaraba y llegaban sin tipar por un
+  // index signature (`[key: string]: unknown`), que se sacó ese día: el
+  // contrato ya documenta todos los campos.
+  remitenteCalle: string | null;
+  remitenteNumero: string | null;
+  remitentePiso: string | null;
+  remitenteReferencia: string | null;
   clienteRemitenteId: string | null;
   destinatarioNombre: string;
   destinatarioTelefono: string;
@@ -193,6 +205,10 @@ export interface EnvioApi {
   lugarPago: LugarPagoApi;
   formaPago: FormaPagoApi;
   contrarreembolsoImporte: string | null;
+  // Mismo caso que el domicilio del remitente.
+  valorDeclarado: string | null;
+  gasto: string;
+  observaciones: string | null;
   camino: string;
   guiaDiariaNumero: number;
   estadoActual: string;
@@ -202,7 +218,6 @@ export interface EnvioApi {
   creadoEn: string;
   guiaDiaria: string;
   ubicacion: string;
-  [key: string]: unknown;
 }
 
 export async function crearEnvio(data: CrearEnvioInput, clientUuid?: string): Promise<EnvioApi> {
@@ -218,23 +233,39 @@ export async function crearEnvio(data: CrearEnvioInput, clientUuid?: string): Pr
   });
 }
 
-// PATCH /envios/:id — changelog 2026-09-15: ahora exige `clientUuid` en el
-// body (como todo acto de custodia). Sin el, 400. Reintentar con el mismo
+// PATCH /envios/:id — changelog 2026-09-15: exige `clientUuid` en el body
+// (como todo acto de custodia). Sin el, 400. Reintentar con el mismo
 // clientUuid da 200 y un solo evento en el ledger (idempotencia); reusarlo
 // en otro envio da 409 CLIENT_UUID_REUTILIZADO. Cada correccion real deja
 // un evento "modificacion" en el ledger de custodia, visible en
 // /seguimiento (ver seguimiento.ts, TipoEvento). Un PATCH que no cambia
 // nada no escribe ni fila ni evento.
-export async function actualizarEnvio(
+//
+// 2026-10-01 (modificar desde Seguimiento): el PATCH exige ademas `motivo`
+// (3 a 200 caracteres), que queda en el evento. El `clientUuid` lo pone
+// quien llama: el panel de Seguimiento genera uno al abrirse y lo reusa en
+// cada reintento, para que reintentar sea idempotente.
+export async function modificarEnvio(
   id: string,
-  data: ActualizarEnvioInput
+  cambios: CamposModificablesEnvio,
+  opciones: { motivo: string; clientUuid: string }
 ): Promise<EnvioApi> {
   const token = await requireToken();
   return apiFetch<EnvioApi>(`/envios/${encodeURIComponent(id)}`, {
     method: "PATCH",
     token,
-    body: aplanarParaPatch(data, nuevoClientUuid()),
+    body: { ...cambios, motivo: opciones.motivo, clientUuid: opciones.clientUuid },
   });
+}
+
+// Misma operacion que modificarEnvio(), con la forma anidada que arma el
+// alta (ActualizarEnvioInput) — la usa el "Editar" de Carga rapida.
+export async function actualizarEnvio(
+  id: string,
+  data: ActualizarEnvioInput,
+  motivo: string
+): Promise<EnvioApi> {
+  return modificarEnvio(id, aplanarParaPatch(data), { motivo, clientUuid: nuevoClientUuid() });
 }
 
 export async function listEnvios(params?: {

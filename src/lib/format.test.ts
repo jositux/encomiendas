@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCurrency, formatDate, formatDateTime, initials } from "./format";
+import { formatCurrency, formatDate, formatDateTime, formatImporte, initials } from "./format";
 
 // Intl.NumberFormat("es-AR", { style: "currency", ... }) separa el símbolo
 // del monto con un espacio "duro" (U+00A0), no un espacio normal — se
@@ -19,6 +19,23 @@ describe("formatCurrency", () => {
 
   it("soporta 0", () => {
     expect(sinEspacioDuro(formatCurrency(0))).toBe("$ 0");
+  });
+});
+
+describe("formatImporte", () => {
+  it("no muestra centavos cuando el importe es entero", () => {
+    expect(sinEspacioDuro(formatImporte("10000.00"))).toBe("$ 10.000");
+    expect(sinEspacioDuro(formatImporte(8000))).toBe("$ 8.000");
+    expect(sinEspacioDuro(formatImporte("0.00"))).toBe("$ 0");
+  });
+
+  it("muestra los dos decimales cuando hay centavos, sin redondear a pesos", () => {
+    expect(sinEspacioDuro(formatImporte("10500.50"))).toBe("$ 10.500,50");
+    expect(sinEspacioDuro(formatImporte(22000.6))).toBe("$ 22.000,60");
+  });
+
+  it("devuelve el texto tal cual si no es un número", () => {
+    expect(formatImporte("abc")).toBe("abc");
   });
 });
 
