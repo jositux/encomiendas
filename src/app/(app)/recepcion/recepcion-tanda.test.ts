@@ -7,6 +7,7 @@ import {
   conLectura,
   conResultado,
   enCola,
+  esRebote,
   leerTanda,
   leyendaDelModo,
   modoInicial,
@@ -285,6 +286,46 @@ describe("la cola", () => {
       conError: 1,
       enCola: 1,
     });
+  });
+});
+
+// Los lectores de mano a veces leen dos veces el mismo código.
+describe("antirrebote del lector", () => {
+  const en = (ms: number) => new Date(AHORA.getTime() + ms);
+  const leida = (texto: string, ms: number) =>
+    nuevaLectura(texto, RECIBIR, false, `uuid-${texto}-${ms}`, en(ms));
+
+  it("la misma lectura a 500 ms de la anterior es un rebote: se descarta", () => {
+    const t = conLectura(tandaVacia(OPERADOR), leida("A", 0));
+    expect(esRebote(t, "A", en(500))).toBe(true);
+    expect(esRebote(t, "A", en(1999))).toBe(true);
+  });
+
+  it("la misma lectura a 2,5 s ya no es un rebote: se procesa", () => {
+    const t = conLectura(tandaVacia(OPERADOR), leida("A", 0));
+    expect(esRebote(t, "A", en(2000))).toBe(false);
+    expect(esRebote(t, "A", en(2500))).toBe(false);
+  });
+
+  it("A, B, A dentro de 2 s: las tres se procesan (hubo otra lectura en el medio)", () => {
+    let t = tandaVacia(OPERADOR);
+    expect(esRebote(t, "A", en(0))).toBe(false);
+    t = conLectura(t, leida("A", 0));
+    expect(esRebote(t, "B", en(300))).toBe(false);
+    t = conLectura(t, leida("B", 300));
+    expect(esRebote(t, "A", en(600))).toBe(false);
+  });
+
+  it("una lectura distinta nunca es un rebote, ni la primera de la tanda", () => {
+    expect(esRebote(tandaVacia(OPERADOR), "A", en(0))).toBe(false);
+    const t = conLectura(tandaVacia(OPERADOR), leida("0000000093", 0));
+    expect(esRebote(t, "000000009-3", en(100))).toBe(false);
+  });
+
+  it("vale también si la anterior ya tiene resultado", () => {
+    const l = leida("A", 0);
+    const t = conResultado(conLectura(tandaVacia(OPERADOR), l), l.id, resultadoSinRespuesta());
+    expect(esRebote(t, "A", en(800))).toBe(true);
   });
 });
 

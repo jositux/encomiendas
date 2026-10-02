@@ -11,6 +11,7 @@ import {
   conLectura,
   conResultado,
   enCola,
+  esRebote,
   leerTanda,
   modoListo,
   modosDisponibles,
@@ -120,7 +121,9 @@ export function useTanda({ permisos, usuarioId }: { permisos: string[]; usuarioI
   }, [drenar]);
 
   // Una lectura del lector, del teclado o de la cámara. Devuelve false si
-  // no se encoló: el modo necesita un valor y todavía no se eligió.
+  // no se encoló: el modo necesita un valor y todavía no se eligió. Un
+  // rebote del lector (la misma lectura repetida enseguida) se descarta en
+  // silencio y no cuenta como un error.
   const leer = React.useCallback(
     (texto: string): boolean => {
       const limpio = texto.trim();
@@ -130,6 +133,7 @@ export function useTanda({ permisos, usuarioId }: { permisos: string[]; usuarioI
         if (!tandaRef.current.silencio) sonar("error");
         return false;
       }
+      if (esRebote(tandaRef.current, limpio)) return true;
       const lectura = nuevaLectura(limpio, modo, !recibe, nuevoClientUuid());
       actualizar((t) => conLectura(t, lectura));
       void drenar();

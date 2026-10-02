@@ -110,6 +110,20 @@ export function nuevaLectura(
   return { id, texto, hora: ahora.toISOString(), modo, soloAsignar, estado: "en_cola" };
 }
 
+// Antirrebote: los lectores de mano a veces leen dos veces el mismo código
+// de un tirón. Una lectura IDÉNTICA a la inmediatamente anterior, dentro de
+// esta ventana, es un rebote: se descarta en silencio (sin llamada, sin
+// fila, sin sonido). Pasada la ventana, o con otra lectura en el medio, se
+// procesa normal (y el backend responderá "ya lo tenías").
+export const VENTANA_DE_REBOTE_MS = 2000;
+
+export function esRebote(tanda: Tanda, texto: string, ahora: Date = new Date()): boolean {
+  const [anterior] = tanda.lecturas;
+  if (!anterior || anterior.texto !== texto) return false;
+  const transcurrido = ahora.getTime() - new Date(anterior.hora).getTime();
+  return transcurrido >= 0 && transcurrido < VENTANA_DE_REBOTE_MS;
+}
+
 export function pedidoDeLectura(lectura: Lectura) {
   return {
     envioNumero: lectura.texto,

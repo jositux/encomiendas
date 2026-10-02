@@ -310,6 +310,44 @@ describe("Recepción — la cola de lecturas", () => {
     expect(ultimo()).toHaveTextContent("Destinatario 000000003-3");
   });
 
+  it("antirrebote: el mismo código leído dos veces de un tirón cuenta una sola vez, en silencio", async () => {
+    vi.mocked(procesarLecturaAction).mockResolvedValue(ok("000000009-3"));
+    renderRecepcion();
+
+    escanear("0000000093");
+    escanear("0000000093");
+
+    await waitFor(() => expect(ultimo()).toHaveTextContent("Recibido"));
+    expect(procesarLecturaAction).toHaveBeenCalledTimes(1);
+    expect(filas()).toHaveLength(1);
+    // Un solo sonido, el del resultado: el rebote no suena ni avisa.
+    expect(sonar).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(campo().value).toBe("");
+    expect(campo()).toHaveFocus();
+  });
+
+  it("antirrebote: pasados los 2 segundos, la misma lectura se procesa (y el backend dirá que ya lo tenía)", async () => {
+    vi.mocked(procesarLecturaAction)
+      .mockResolvedValueOnce(ok("000000009-3"))
+      .mockResolvedValueOnce(ok("000000009-3", { recepcion: "ya_en_custodia" }));
+    const base = new Date("2026-10-02T15:00:00.000Z").getTime();
+    vi.useFakeTimers({ toFake: ["Date"], now: base });
+    try {
+      renderRecepcion();
+      escanear("0000000093");
+      await waitFor(() => expect(procesarLecturaAction).toHaveBeenCalledTimes(1));
+
+      vi.setSystemTime(base + 2500);
+      escanear("0000000093");
+      await waitFor(() => expect(procesarLecturaAction).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(ultimo()).toHaveTextContent("Ya lo tenías"));
+      expect(filas()).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("cada lectura conserva el modo con el que se escaneó, aunque se cambie con la cola pendiente", async () => {
     const resolver: ((r: ResultadoDeRecepcion) => void)[] = [];
     vi.mocked(procesarLecturaAction).mockImplementation(
