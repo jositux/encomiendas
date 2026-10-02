@@ -195,6 +195,20 @@ function Panel({
           </p>
           <p className="font-medium">{remito.destinatario.nombre}</p>
           <p className="text-xs print:text-black">{remito.destinatario.domicilio}</p>
+          {/* Referencia del domicilio (p.ej. "casa verde frente a la
+              plaza") -- solo del destinatario, en su propio renglón debajo
+              del domicilio y un punto más chica: el domicilio va en
+              text-xs (12px = 9pt), esto en 8pt. Solo se pinta si trae
+              texto: con null, vacío o un backend que todavía no manda el
+              campo no queda renglón en blanco. `break-words` para que una
+              referencia larga corte en varias líneas en vez de salirse de
+              la columna al imprimir. */}
+          {remito.destinatario.referencia?.trim() && (
+            <p className="break-words text-[8pt] leading-tight print:text-black">
+              <span className="text-muted-foreground print:text-black">Ref.: </span>
+              {remito.destinatario.referencia.trim()}
+            </p>
+          )}
           <p className="text-xs print:text-black">{remito.destinatario.telefono}</p>
         </div>
       </div>
