@@ -25,6 +25,7 @@ import {
 
 import { CargaRapidaView } from "./carga-rapida-view";
 import { AltaIndividualView } from "./alta-individual-view";
+import { urlParaImprimirRemito } from "./imprimir-remito";
 
 
 
@@ -208,7 +209,7 @@ export function NuevaEncomiendaView({
                     )}
                   </p>
                   <a
-                    href={`/remito/${encodeURIComponent(e.numero)}`}
+                    href={urlParaImprimirRemito(e.numero)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
