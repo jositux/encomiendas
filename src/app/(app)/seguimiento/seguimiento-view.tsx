@@ -389,7 +389,7 @@ function EnviosRecientesList({
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-semibold">#{e.guiaDiaria}</span>
+                    <span className="font-mono font-semibold">#{e.guiaDiaria ?? e.numero}</span>
                     <Badge variant={ubicacionVariant}>{ubicacionLabel}</Badge>
                   </div>
                   <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -446,7 +446,7 @@ function SeguimientoResultado({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-lg font-semibold">#{envio.guiaDiaria}</span>
+                <span className="font-mono text-lg font-semibold">#{envio.guiaDiaria ?? envio.numero}</span>
                 <Badge variant={ubicacionVariant}>{ubicacionLabel}</Badge>
                 <span className="text-xs text-muted-foreground">{envio.estadoActual}</span>
               </div>
@@ -924,7 +924,7 @@ function AccionesEnvio({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Anular envío</DialogTitle>
-            <DialogDescription>El envío #{envio.guiaDiaria} queda anulado. Esta acción se registra en la historia.</DialogDescription>
+            <DialogDescription>El envío #{envio.guiaDiaria ?? envio.numero} queda anulado. Esta acción se registra en la historia.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
             <Label htmlFor="motivo-anular">Motivo</Label>
@@ -1041,7 +1041,7 @@ function AccionesEnvio({
           <DialogHeader>
             <DialogTitle>Confirmar entrega</DialogTitle>
             <DialogDescription>
-              Confirma que el envío #{envio.guiaDiaria}, ya entregado, llegó correctamente a destino. Quien confirma no puede ser quien entregó.
+              Confirma que el envío #{envio.guiaDiaria ?? envio.numero}, ya entregado, llegó correctamente a destino. Quien confirma no puede ser quien entregó.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

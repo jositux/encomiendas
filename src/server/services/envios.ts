@@ -216,7 +216,10 @@ export interface EnvioApi {
   custodiaActualPuntoId: string | null;
   planillaActualId: string | null;
   creadoEn: string;
-  guiaDiaria: string;
+  // null en un envio que todavia no tiene guia asignada (contrato:
+  // EnvioFilaDto / EnvioDelSeguimientoDto). Quien la muestra cae al
+  // `numero` en ese caso, nunca imprime "#null".
+  guiaDiaria: string | null;
   ubicacion: string;
 }
 

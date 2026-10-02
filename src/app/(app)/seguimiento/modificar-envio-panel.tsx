@@ -177,7 +177,7 @@ function Formulario({
       <SheetHeader>
         <SheetTitle>Modificar datos</SheetTitle>
         <SheetDescription>
-          Envío #{envio.guiaDiaria} · {envio.numero}. Cada cambio queda registrado en la historia
+          Envío #{envio.guiaDiaria ?? envio.numero} · {envio.numero}. Cada cambio queda registrado en la historia
           con tu nombre y el motivo.
         </SheetDescription>
       </SheetHeader>

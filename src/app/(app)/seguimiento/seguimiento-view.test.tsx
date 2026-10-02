@@ -108,6 +108,12 @@ describe("Seguimiento — ficha del envío", () => {
     // Paquetería no lleva contra reembolso: ese renglón no aparece.
     expect(screen.queryByText("Contra reembolso")).toBeNull();
   });
+
+  it("un envío sin guía diaria se identifica por su número, no por \"#null\"", async () => {
+    await abrirSeguimiento(seguimientoFixture({ envio: { guiaDiaria: null } }));
+    expect(screen.getByText("#000000032-1")).toBeInTheDocument();
+    expect(screen.queryByText(/#null/)).toBeNull();
+  });
 });
 
 describe("Seguimiento — si se puede modificar lo dice el backend (`edicion`)", () => {
