@@ -120,9 +120,14 @@ export const NAV_GROUPS: NavGroup[] = [
         title: "Recepción",
         href: "/recepcion",
         icon: PackageCheck,
-        description: "Recibir un envío suelto por número o guía, sin pasar por una planilla",
+        description: "Recibir paquetes con el lector y, si hace falta, cambiarles el sector o reservarles un recorrido",
         // NOTA-2026-09-28-03: pantalla nueva para operador (y sistema).
-        visiblePara: esOperadorOSistema,
+        // 2026-10-02: también para quien solo asigna (`custodia:asignar`
+        // sin `custodia:registrar`, el supervisor): la misma pantalla le
+        // deja cambiar el sector o reservar el recorrido de lo que está
+        // parado en sus bases, sin recibir.
+        visiblePara: (permisos) =>
+          esOperadorOSistema(permisos) || permisos.includes("custodia:asignar"),
       },
       {
         title: "Planillas",

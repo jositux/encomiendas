@@ -403,3 +403,87 @@ export async function listLoQueLleva(usuarioId: string): Promise<ResultadoEnvios
     throw err;
   }
 }
+
+// -- Recepción con asignación (2026-10-02) -----------------------------------
+// La pantalla Recepción hace UN acto por escaneo: `POST /custodia/recepcion`
+// recibe el envío y, si se pide, le cambia el sector o lo reserva para un
+// recorrido, todo en la misma transacción del backend. Ya no hay búsqueda
+// previa: `envioNumero` acepta el número con guión, sin guión (código de
+// barras del remito) o el remito manual.
+//
+// La asignación nunca hace fallar la recepción: si no corresponde, el
+// envío queda recibido y `asignacion.aplicada` viene en false con el
+// porqué (`codigo`: SECTOR_DE_OTRA_LOCALIDAD, RECORRIDO_DE_OTRA_BASE,
+// ENVIO_EN_PLANILLA, SIN_PERMISO; `mensaje` para mostrar tal cual).
+//
+// `POST /custodia/asignaciones` es la asignación sola, sin recibir: para
+// quien tiene `custodia:asignar` y no `custodia:registrar` (supervisor), y
+// para Deshacer. Ahí los mismos motivos llegan como error (409 / 403).
+export interface IdYNombre {
+  id: string;
+  nombre: string;
+}
+
+export interface EnvioRecibidoApi {
+  id: string;
+  numero: string;
+  ubicacion: string;
+  destinatarioNombre: string;
+  cantidadBultos: number;
+  localidadDestinoNombre: string;
+  sector: IdYNombre;
+  // El recorrido para el que está reservado, o null si sale por la regla
+  // de siempre (el que tenga su sector de parada).
+  recorrido: IdYNombre | null;
+}
+
+export type TipoDeAsignacion = "sector" | "recorrido";
+
+export interface AsignacionApi {
+  tipo: TipoDeAsignacion;
+  aplicada: boolean;
+  // El sector o el recorrido que tenía antes: es lo que usa Deshacer. null
+  // si no tenía reserva de recorrido.
+  anterior: IdYNombre | null;
+  codigo?: string;
+  mensaje?: string;
+}
+
+export interface RespuestaDeRecepcion {
+  envio: EnvioRecibidoApi;
+  // Ausente en la asignación sola (no hay recepción).
+  recepcion?: "recibido" | "ya_en_custodia";
+  asignacion: AsignacionApi | null;
+}
+
+// Qué se le pide al envío además de recibirlo. `recorridoId: null` quita la
+// reserva (solo tiene sentido en la asignación sola).
+export type AsignacionPedida = { sectorId: string } | { recorridoId: string | null };
+
+export async function recibirEnvio(pedido: {
+  envioNumero: string;
+  clientUuid: string;
+  occurredAt: string;
+  asignacion?: AsignacionPedida;
+}): Promise<RespuestaDeRecepcion> {
+  const token = await requireToken();
+  const { asignacion, ...resto } = pedido;
+  return apiFetch<RespuestaDeRecepcion>("/custodia/recepcion", {
+    method: "POST",
+    token,
+    body: { ...resto, ...asignacion },
+  });
+}
+
+export async function asignarEnCustodia(pedido: {
+  envioNumero: string;
+  clientUuid: string;
+  asignacion: AsignacionPedida;
+}): Promise<RespuestaDeRecepcion> {
+  const token = await requireToken();
+  return apiFetch<RespuestaDeRecepcion>("/custodia/asignaciones", {
+    method: "POST",
+    token,
+    body: { envioNumero: pedido.envioNumero, clientUuid: pedido.clientUuid, ...pedido.asignacion },
+  });
+}

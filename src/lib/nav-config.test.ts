@@ -209,6 +209,15 @@ describe("Tabla de visibilidad por rol (NOTA-2026-09-28-03)", () => {
     expect(esVisibleParaPermisos(planillas(), PERMISOS_OPERADOR)).toBe(true);
   });
 
+  // 2026-10-02: quien puede asignar sector o recorrido (`custodia:asignar`)
+  // llega a Recepción aunque no reciba.
+  it("con custodia:asignar: Recepcion si, aunque no sea operador", () => {
+    expect(esVisibleParaPermisos(recepcion(), [...PERMISOS_SUPERVISOR, "custodia:asignar"])).toBe(
+      true
+    );
+    expect(esVisibleParaPermisos(recepcion(), [...PERMISOS_CHOFER, "custodia:asignar"])).toBe(true);
+  });
+
   it("supervisor: Chofer no, Recepcion no, Planillas no", () => {
     expect(esVisibleParaPermisos(chofer(), PERMISOS_SUPERVISOR)).toBe(false);
     expect(esVisibleParaPermisos(recepcion(), PERMISOS_SUPERVISOR)).toBe(false);

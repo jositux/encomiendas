@@ -61,8 +61,8 @@ import {
 // Si se puede abrir o no lo decide el backend (`edicion` en la respuesta
 // del seguimiento, ver seguimiento.ts) — acá no se recalcula esa regla.
 //
-// Fuera del panel a propósito: la localidad y el barrio de destino (el
-// barrio tiene su acción propia, "Corregir sector") y la cuenta de cliente.
+// Fuera del panel a propósito: la localidad y el sector de destino (el
+// sector tiene su acción propia, "Corregir sector") y la cuenta de cliente.
 // Se muestran para dar contexto, sin campo para editarlos: el PATCH no los
 // acepta.
 export function ModificarEnvioPanel({
@@ -313,8 +313,8 @@ function Formulario({
             </Campo>
           </div>
           <SoloLectura>
-            Destino: {destino.localidad} · barrio {destino.sector}. La localidad no se modifica; el
-            barrio se cambia con &quot;Corregir sector&quot;. Cuenta de cliente:{" "}
+            Destino: {destino.localidad} · sector {destino.sector}. La localidad no se modifica; el
+            sector se cambia con &quot;Corregir sector&quot;. Cuenta de cliente:{" "}
             {envio.clienteDestinatarioId ? "vinculada" : "sin vincular"}.
           </SoloLectura>
         </section>
