@@ -1,3 +1,4 @@
+import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
@@ -409,6 +410,152 @@ describe("RemitoView — un remito que no se imprime", () => {
   });
 });
 
+// Abierta desde un botón "Imprimir remito" (?imprimir=1): registra y abre
+// el diálogo sola al cargar, una sola vez.
+describe("RemitoView — abierta con ?imprimir=1", () => {
+  function abrirCon(url: string) {
+    window.history.replaceState(null, "", url);
+  }
+
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("registra una vez, abre el diálogo una vez y saca el parámetro de la URL", async () => {
+    vi.mocked(registrarImpresionRemitoAction).mockResolvedValue(registroOk(1));
+    abrirCon("/remito/32-1?imprimir=1");
+    const { container } = render(<RemitoView remito={remito()} />);
+    print.mockImplementation(() => {
+      expect(habilitado(container)).toBe(true);
+    });
+
+    // El parámetro se va enseguida, antes de que el registro responda.
+    expect(window.location.pathname + window.location.search).toBe("/remito/32-1");
+
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    expect(registrarImpresionRemitoAction).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(registrarImpresionRemitoAction).mock.calls[0][0]).toBe("envio-uuid-1");
+  });
+
+  it("conserva el resto de la URL al sacar el parámetro", async () => {
+    vi.mocked(registrarImpresionRemitoAction).mockResolvedValue(registroOk(1));
+    abrirCon("/remito/32-1?origen=recientes&imprimir=1#copia");
+    render(<RemitoView remito={remito()} />);
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe(
+      "/remito/32-1?origen=recientes#copia"
+    );
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+  });
+
+  it("con el doble montaje de efectos de React (modo estricto): un solo registro y un solo diálogo", async () => {
+    vi.mocked(registrarImpresionRemitoAction).mockResolvedValue(registroOk(1));
+    abrirCon("/remito/32-1?imprimir=1");
+    render(
+      <React.StrictMode>
+        <RemitoView remito={remito()} />
+      </React.StrictMode>
+    );
+
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    // Margen para que un segundo disparo, si lo hubiera, llegue a verse.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(registrarImpresionRemitoAction).toHaveBeenCalledTimes(1);
+    expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it("un segundo render, o recargar la pestaña, no repite: el parámetro ya no está", async () => {
+    vi.mocked(registrarImpresionRemitoAction).mockResolvedValue(registroOk(1));
+    abrirCon("/remito/32-1?imprimir=1");
+    const { rerender, unmount } = render(<RemitoView remito={remito()} />);
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+
+    rerender(<RemitoView remito={remito()} />);
+    // Recarga: la página se monta de cero con la URL que quedó.
+    unmount();
+    render(<RemitoView remito={remito()} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+
+    expect(registrarImpresionRemitoAction).toHaveBeenCalledTimes(1);
+    expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin el parámetro no registra ni imprime: espera el botón", async () => {
+    abrirCon("/remito/32-1");
+    render(<RemitoView remito={remito()} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(registrarImpresionRemitoAction).not.toHaveBeenCalled();
+    expect(print).not.toHaveBeenCalled();
+    expect(botonImprimir()).not.toBeDisabled();
+  });
+
+  it("con otro valor del parámetro tampoco", async () => {
+    abrirCon("/remito/32-1?imprimir=0");
+    render(<RemitoView remito={remito()} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(registrarImpresionRemitoAction).not.toHaveBeenCalled();
+  });
+
+  it("un remito bloqueado no registra: muestra el bloqueo, y el parámetro igual se va", async () => {
+    const mensaje = "Está anulado: el remito no se imprime.";
+    abrirCon("/remito/32-1?imprimir=1");
+    render(
+      <RemitoView
+        remito={{
+          ...remito(),
+          impresion: { permitida: false, bloqueo: { codigo: "ENVIO_ANULADO", mensaje } },
+        }}
+      />
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(registrarImpresionRemitoAction).not.toHaveBeenCalled();
+    expect(print).not.toHaveBeenCalled();
+    expect(screen.getByRole("note")).toHaveTextContent(mensaje);
+    expect(window.location.search).toBe("");
+  });
+
+  it("si el registro falla no imprime: queda el error y el botón para reintentar", async () => {
+    vi.mocked(registrarImpresionRemitoAction)
+      .mockResolvedValueOnce(ERROR_DE_RED)
+      .mockResolvedValueOnce(registroOk(1));
+    abrirCon("/remito/32-1?imprimir=1");
+    render(<RemitoView remito={remito()} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No se pudo registrar la impresión del remito"
+    );
+    expect(print).not.toHaveBeenCalled();
+
+    // El reintento con el botón es el mismo intento: reusa el clientUuid.
+    fireEvent.click(botonImprimir());
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    const [primero, segundo] = vi.mocked(registrarImpresionRemitoAction).mock.calls;
+    expect(segundo[1]).toBe(primero[1]);
+  });
+
+  it("después de imprimir al abrir, la habilitación se consume como siempre", async () => {
+    vi.mocked(registrarImpresionRemitoAction).mockResolvedValue(registroOk(1));
+    abrirCon("/remito/32-1?imprimir=1");
+    const { container } = render(<RemitoView remito={remito()} />);
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      window.dispatchEvent(new Event("afterprint"));
+    });
+    expect(habilitado(container)).toBe(false);
+    expect(avisoDeImpresion(container)).toBe("Para imprimir este remito usá el botón Imprimir");
+  });
+});
+
 // Impresión automática: la página corre dentro del <iframe> oculto de
 // imprimir-remito.ts y le avisa a la ventana madre por postMessage.
 describe("RemitoView — embebida en el iframe de la impresión automática", () => {
@@ -450,6 +597,20 @@ describe("RemitoView — embebida en el iframe de la impresión automática", ()
       window.location.origin
     );
     expect(habilitado(container)).toBe(false);
+  });
+
+  it("embebida ignora ?imprimir=1: registra una sola vez y no abre el diálogo ella", async () => {
+    vi.mocked(registrarImpresionRemitoAction).mockResolvedValue(registroOk(1));
+    window.history.replaceState(null, "", "/remito/32-1?imprimir=1");
+    render(<RemitoView remito={remito()} />);
+
+    await waitFor(() => expect(postMessage).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(registrarImpresionRemitoAction).toHaveBeenCalledTimes(1);
+    expect(print).not.toHaveBeenCalled();
+    window.history.replaceState(null, "", "/");
   });
 
   it("un remito bloqueado avisa remito-error sin intentar registrar", async () => {
