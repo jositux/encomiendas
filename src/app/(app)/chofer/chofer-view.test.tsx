@@ -39,7 +39,6 @@ import type {
   PlanillaApi,
   ResultadoEnviosEnCustodia,
 } from "@/server/services/custodia";
-import type { LocalidadBackend } from "@/types";
 import {
   envioFixture,
   seguimientoFixture,
@@ -52,7 +51,6 @@ afterEach(() => {
 });
 
 const YO = "u-chofer";
-const LOCALIDADES = [{ id: "loc-posadas", nombre: "Posadas" }] as LocalidadBackend[];
 
 function enCustodia(n: number, overrides: Partial<EnvioEnCustodiaApi> = {}): EnvioEnCustodiaApi {
   return {
@@ -64,6 +62,7 @@ function enCustodia(n: number, overrides: Partial<EnvioEnCustodiaApi> = {}): Env
       destinatarioNumero: `${n}00`,
     }),
     custodia: { usuario: { id: YO, nombre: "Chofer" }, punto: null },
+    localidadDestinoNombre: "Posadas",
     ...overrides,
   };
 }
@@ -78,7 +77,6 @@ function renderChofer(inicial: ResultadoEnviosEnCustodia) {
       permisos={["custodia:registrar", "entregas:registrar", "envios:leer"]}
       usuarioId={YO}
       loQueLlevaInicial={inicial}
-      localidades={LOCALIDADES}
     />
   );
 }

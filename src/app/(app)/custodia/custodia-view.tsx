@@ -26,7 +26,6 @@ import type {
   EnvioEnCustodiaApi,
   PaginaDeEnviosEnCustodia,
 } from "@/server/services/custodia";
-import type { LocalidadBackend } from "@/types";
 import { PERSONA_MIOS, urlDeCustodia } from "./custodia-url";
 
 // La guía real (letra+número, ej. "C1") que usa el negocio en mostrador
@@ -95,7 +94,6 @@ export function CustodiaView({
   envios,
   custodios,
   totalSinFiltro,
-  localidades,
   usuarioId,
   seleccion,
   error,
@@ -105,7 +103,6 @@ export function CustodiaView({
   custodios: CustodioApi[];
   // Total de la lista sin filtro de persona (el "Todos (n)" del selector).
   totalSinFiltro: number;
-  localidades: LocalidadBackend[];
   usuarioId: string;
   // El valor de `?persona=`: "", "mios" o el id de una persona.
   seleccion: string;
@@ -113,11 +110,6 @@ export function CustodiaView({
 }) {
   const router = useRouter();
   const [navegando, startTransition] = React.useTransition();
-
-  const localidadNombre = React.useMemo(() => {
-    const map = new Map(localidades.map((l) => [l.id, l.nombre]));
-    return (id: string) => map.get(id) ?? "—";
-  }, [localidades]);
 
   function irA(persona: string, pagina: number) {
     startTransition(() => router.push(urlDeCustodia(persona, pagina)));
@@ -215,7 +207,7 @@ export function CustodiaView({
                   <TableCell className="text-sm">
                     {e.remitenteNombre ?? "—"} → {e.destinatarioNombre ?? "—"}
                   </TableCell>
-                  <TableCell className="text-sm">{localidadNombre(e.localidadDestinoId)}</TableCell>
+                  <TableCell className="text-sm">{e.localidadDestinoNombre}</TableCell>
                   <TableCell>
                     <Badge variant={UBICACION_VARIANT[e.ubicacion] ?? "outline"}>
                       {ubicacionEnPalabras(e.ubicacion)}

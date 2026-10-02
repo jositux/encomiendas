@@ -11,7 +11,6 @@ import type {
   EnvioEnCustodiaApi,
   PaginaDeEnviosEnCustodia,
 } from "@/server/services/custodia";
-import type { LocalidadBackend } from "@/types";
 import { envioFixture } from "@/app/(app)/seguimiento/seguimiento.fixtures";
 import { CustodiaView, opcionesDePersona } from "./custodia-view";
 import { paginaValida, urlDeCustodia } from "./custodia-url";
@@ -29,11 +28,6 @@ const CUSTODIOS: CustodioApi[] = [
   { usuario: { id: "u-marta", nombre: "Marta" }, cantidad: 2 },
 ];
 
-const LOCALIDADES = [
-  { id: "loc-obera", nombre: "Oberá" },
-  { id: "loc-posadas", nombre: "Posadas" },
-] as LocalidadBackend[];
-
 function envio(n: number, overrides: Partial<EnvioEnCustodiaApi> = {}): EnvioEnCustodiaApi {
   return {
     ...envioFixture({ id: `envio-${n}`, numero: `00000000${n}-1`, guiaDiaria: `A${n}` }),
@@ -41,6 +35,7 @@ function envio(n: number, overrides: Partial<EnvioEnCustodiaApi> = {}): EnvioEnC
       usuario: { id: "u-luis", nombre: "Luis" },
       punto: { id: "p-obera", nombre: "Base Oberá" },
     },
+    localidadDestinoNombre: "Posadas",
     ...overrides,
   };
 }
@@ -65,7 +60,6 @@ function renderView(
       envios={envios}
       custodios={CUSTODIOS}
       totalSinFiltro={envios?.total ?? 0}
-      localidades={LOCALIDADES}
       usuarioId={YO}
       seleccion=""
       {...props}
@@ -140,7 +134,7 @@ describe("Custodia — el selector depende del alcance que informa el backend", 
 });
 
 describe("Custodia — la lista", () => {
-  it("toma de la respuesta quién lo tiene y en qué punto, y dice dónde está en palabras", () => {
+  it("toma de la respuesta el destino, quién lo tiene y en qué punto, y dice dónde está en palabras", () => {
     renderView(
       pagina({
         datos: [
@@ -153,6 +147,7 @@ describe("Custodia — la lista", () => {
           }),
           envio(2, {
             ubicacion: "en_origen",
+            localidadDestinoNombre: "Eldorado",
             custodia: { usuario: { id: "u-marta", nombre: "Marta" }, punto: null },
           }),
         ],
@@ -175,7 +170,7 @@ describe("Custodia — la lista", () => {
       "01/10/2026",
     ]);
     // Sin punto anotado: guion, no un nombre inventado.
-    expect(celdas(fila2).slice(3, 6)).toEqual(["En origen", "Marta", "—"]);
+    expect(celdas(fila2).slice(2, 6)).toEqual(["Eldorado", "En origen", "Marta", "—"]);
     // El estado crudo ya no se muestra.
     expect(screen.queryByText("REGISTRADO")).toBeNull();
     expect(screen.queryByText("EN_CUSTODIA")).toBeNull();

@@ -4,7 +4,6 @@ import { Loader2, PackageOpen } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import type { ResultadoEnviosEnCustodia } from "@/server/services/custodia";
-import type { LocalidadBackend } from "@/types";
 
 // "Lo que llevás" (2026-10-02): los envíos que están en custodia de quien
 // mira la pantalla del chofer. Hasta acá el chofer no tenía ninguna lista:
@@ -13,17 +12,13 @@ import type { LocalidadBackend } from "@/types";
 // y en "Recibir paquete".
 export function LoQueLlevas({
   estado,
-  localidades,
   actualizando,
 }: {
   // La página que devolvió GET /custodia/envios, o el rechazo del backend
   // si no se pudo leer.
   estado: ResultadoEnviosEnCustodia;
-  localidades: LocalidadBackend[];
   actualizando: boolean;
 }) {
-  const localidadNombre = (id: string) => localidades.find((l) => l.id === id)?.nombre ?? "—";
-
   return (
     <Card>
       <CardContent className="flex flex-col gap-3 pt-6">
@@ -61,9 +56,7 @@ export function LoQueLlevas({
                     {e.destinatarioCalle} {e.destinatarioNumero ?? ""}
                     {e.destinatarioPiso ? ` · ${e.destinatarioPiso}` : ""}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {localidadNombre(e.localidadDestinoId)}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{e.localidadDestinoNombre}</p>
                 </li>
               ))}
             </ul>

@@ -6,7 +6,6 @@ import {
   type CustodioApi,
   type PaginaDeEnviosEnCustodia,
 } from "@/server/services/custodia";
-import { listLocalidadesSeguro } from "@/server/services/localidades";
 import { CustodiaView } from "./custodia-view";
 import { PERSONA_MIOS, TAMANO_DE_PAGINA, paginaValida } from "./custodia-url";
 
@@ -18,28 +17,20 @@ import { PERSONA_MIOS, TAMANO_DE_PAGINA, paginaValida } from "./custodia-url";
 //
 // Ahora lee GET /custodia/envios: solo envíos que están en custodia de una
 // persona, dentro de lo que el BACKEND deja ver a quien consulta
-// (`alcance`: propio / base / todo), con el custodio y el punto ya
-// resueltos a nombres y paginación real. Ya no pide GET /envios, GET
-// /usuarios ni GET /puntos.
+// (`alcance`: propio / base / todo), con el custodio, el punto y la
+// localidad de destino ya resueltos a nombres, y paginación real. Ya no
+// pide GET /envios, GET /usuarios ni GET /puntos, ni ningún catálogo.
 //
 // El filtro y la página viven en la URL (`?persona=…&pagina=…`): cambiar el
 // selector o de página es una navegación, y esta página vuelve a pedir los
 // datos. `persona` es "mios", el id de una persona, o nada (la vista por
 // defecto del alcance: todo lo que se puede ver).
-//
-// `localidades` solo traduce la localidad de destino a su nombre; es
-// best-effort (ver services/localidades.ts): si falla, esa columna queda
-// en "—" y la pantalla carga igual.
 export default async function CustodiaPage({
   searchParams,
 }: {
   searchParams: Promise<{ persona?: string; pagina?: string }>;
 }) {
-  const [{ persona, pagina }, session, localidades] = await Promise.all([
-    searchParams,
-    getSession(),
-    listLocalidadesSeguro(),
-  ]);
+  const [{ persona, pagina }, session] = await Promise.all([searchParams, getSession()]);
 
   const usuarioId = session?.usuarioId ?? "";
   const numeroDePagina = paginaValida(pagina);
@@ -81,7 +72,6 @@ export default async function CustodiaPage({
       envios={envios}
       custodios={custodios}
       totalSinFiltro={totalSinFiltro}
-      localidades={localidades}
       usuarioId={usuarioId}
       seleccion={seleccion}
       error={error}

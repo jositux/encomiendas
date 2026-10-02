@@ -330,7 +330,13 @@ export interface CustodiaDeEnvioApi {
   punto: { id: string; nombre: string } | null;
 }
 
-export type EnvioEnCustodiaApi = EnvioApi & { custodia: CustodiaDeEnvioApi };
+// Fila de GET /custodia/envios (EnvioEnCustodiaFilaDto en el contrato): el
+// envío como en las otras listas, más quién lo tiene y el nombre de la
+// localidad de destino ya resuelto -- tampoco hace falta GET /localidades.
+export type EnvioEnCustodiaApi = EnvioApi & {
+  custodia: CustodiaDeEnvioApi;
+  localidadDestinoNombre: string;
+};
 
 export interface PaginaDeEnviosEnCustodia {
   datos: EnvioEnCustodiaApi[];
