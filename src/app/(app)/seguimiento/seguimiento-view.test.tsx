@@ -96,7 +96,7 @@ describe("Seguimiento — ficha del envío", () => {
     expect(screen.getByText("Farmacia Centro SRL")).toBeInTheDocument();
     expect(screen.getByText(/Av\. Mitre 2180/)).toBeInTheDocument();
     expect(screen.getByText("Ref.: casa verde frente a la plaza")).toBeInTheDocument();
-    expect(screen.getByText("Posadas · barrio Centro")).toBeInTheDocument();
+    expect(screen.getByText("Posadas · sector Centro")).toBeInTheDocument();
 
     const dato = (label: string) => texto(screen.getByText(label).nextElementSibling);
     expect(dato("Tipo")).toBe("Paquetería");
@@ -167,7 +167,7 @@ describe("Seguimiento — panel Modificar datos", () => {
     expect(campo("mod-observaciones").value).toBe("Repuestos");
     expect(campo("mod-motivo").value).toBe("");
     // Destino y cuenta de cliente: a la vista, sin campo para editarlos.
-    expect(within(panel).getByText(/Destino: Posadas · barrio Centro/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Destino: Posadas · sector Centro/)).toBeInTheDocument();
     expect(within(panel).getAllByText(/Cuenta de cliente: sin vincular/)).toHaveLength(2);
   });
 

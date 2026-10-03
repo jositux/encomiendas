@@ -529,7 +529,7 @@ function SeguimientoResultado({
                   <p className="text-xs text-muted-foreground">Ref.: {envio.destinatarioReferencia}</p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  {localidadNombre(envio.localidadDestinoId)} · barrio {sectorNombre}
+                  {localidadNombre(envio.localidadDestinoId)} · sector {sectorNombre}
                 </p>
               </div>
             </div>

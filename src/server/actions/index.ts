@@ -24,6 +24,7 @@ export * from "./rutas";
 export * from "./envios";
 export * from "./seguimiento";
 export * from "./chofer";
+export * from "./recepcion";
 export * from "./despachos";
 export * from "./usuarios";
 export * from "./roles";
