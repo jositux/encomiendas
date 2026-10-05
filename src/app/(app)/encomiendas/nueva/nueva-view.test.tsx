@@ -167,6 +167,68 @@ describe("NuevaEncomiendaView - modo Individual", () => {
   });
 });
 
+// 2026-10-05: el orden de Tab del alta es el orden del papel: remito manual,
+// origen, destino, tipo y pago, importes, observaciones, botones. Ningún
+// control oculto ni fuera de orden se mete en el medio (con eso contaba el
+// arreglo del foco que quedaba pegado al borde: el scroll-padding de <main>
+// solo sirve si el foco va a donde tiene que ir).
+describe("NuevaEncomiendaView - orden de Tab del alta individual", () => {
+  it("recorre los campos en el orden del formulario y termina en Agregar encomienda", async () => {
+    const user = userEvent.setup();
+    renderView();
+
+    const remitoManual = screen.getByLabelText("Remito N°");
+    remitoManual.focus();
+    expect(document.activeElement).toBe(remitoManual);
+
+    const recorrido: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      await user.tab();
+      const a = document.activeElement as HTMLElement | null;
+      if (!a || a === document.body) break;
+      // Bultos y Flete no tienen id: se los nombra por la etiqueta de al lado.
+      const etiqueta = a.parentElement?.querySelector("label")?.textContent?.trim();
+      const nombre =
+        a.id ||
+        a.getAttribute("aria-label") ||
+        (a.tagName === "INPUT" && etiqueta) ||
+        a.textContent?.trim() ||
+        a.tagName.toLowerCase();
+      recorrido.push(nombre);
+      if (nombre === "Agregar encomienda") break;
+    }
+
+    expect(recorrido).toEqual([
+      "origen-nombre",
+      "Alta rápida de cliente para el origen",
+      "origen-telefono",
+      "origen-calle",
+      "origen-numero",
+      "origen-piso",
+      "origen-referencia",
+      "origen-localidad",
+      "destino-nombre",
+      "Alta rápida de cliente para el destino",
+      "destino-telefono",
+      "destino-calle",
+      "destino-numero",
+      "destino-piso",
+      "destino-referencia",
+      "destino-localidad",
+      "Paquetería",
+      "Bultos",
+      "Flete ($)",
+      "Destino",
+      "Contado",
+      "valor-declarado",
+      "gasto",
+      "observaciones",
+      "Limpiar",
+      "Agregar encomienda",
+    ]);
+  }, 15_000);
+});
+
 describe("NuevaEncomiendaView - modo Carga rápida", () => {
   it("confirma el remitente, agrega un destino y lo guarda", async () => {
     const user = userEvent.setup();
