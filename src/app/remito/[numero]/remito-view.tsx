@@ -534,7 +534,7 @@ function Panel({
       </div>
 
       {/* Desglose de flete/contra reembolso/gasto — el backend ya lo manda
-          en /remito pero antes no se mostraba, solo los 3 totales de abajo.
+          en /remito pero antes no se mostraba, solo los totales de abajo.
           Contra reembolso es nullable (solo aplica a envíos "efectivo"); flete
           y gasto siempre vienen, aunque sean "0.00". */}
       <div className="grid grid-cols-3 gap-2 border-t pt-2 text-xs print:border-black">
@@ -566,8 +566,14 @@ function Panel({
           gasto lo cobra quien entrega, asi que con pago en origen cobrado
           = flete y aCobrar = gasto + CRR (antes cobrado = flete + gasto).
           Detalle por lugar de pago en RemitoApi (envios.ts). Aca no cambia
-          nada: los tres importes se pintan tal como llegan. */}
-      <div className="grid grid-cols-3 gap-2 border-t pt-2 text-center print:border-black">
+          nada: los importes se pintan tal como llegan.
+          2026-10-04: el papel ya no lleva "Total" (pedido del usuario): con
+          el gasto cobrado por quien entrega, el total no es lo que paga
+          nadie en ningún mostrador y confundía. Quedan Cobrado y A cobrar,
+          a dos columnas. importes.total sigue viniendo del backend; acá no
+          se pinta. La vista en pantalla es la previa del papel, así que
+          tampoco. */}
+      <div className="grid grid-cols-2 gap-2 border-t pt-2 text-center print:border-black">
         <div>
           <p className="text-xs text-muted-foreground print:text-black">Cobrado</p>
           <p className="font-semibold">{money(remito.importes.cobrado)}</p>
@@ -575,10 +581,6 @@ function Panel({
         <div>
           <p className="text-xs text-muted-foreground print:text-black">A cobrar</p>
           <p className="font-semibold">{money(remito.importes.aCobrar)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground print:text-black">Total</p>
-          <p className="font-semibold">{money(remito.importes.total)}</p>
         </div>
       </div>
 

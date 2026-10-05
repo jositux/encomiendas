@@ -130,6 +130,33 @@ describe("RemitoView — referencia del domicilio del destinatario", () => {
   });
 });
 
+// 2026-10-04: el papel lleva Cobrado y A cobrar; "Total" se sacó a pedido
+// del usuario. El backend lo sigue mandando y no se pinta.
+describe("RemitoView — importes del pie", () => {
+  it("muestra Cobrado y A cobrar en las dos copias, y no muestra Total ni su valor", () => {
+    render(
+      <RemitoView
+        remito={{
+          ...remito(),
+          importes: { cobrado: "10500.00", aCobrar: "2000.00", total: "12500.00" },
+        }}
+      />
+    );
+
+    for (const [etiqueta, valor] of [
+      ["Cobrado", "$ 10.500"],
+      ["A cobrar", "$ 2.000"],
+    ]) {
+      const etiquetas = screen.getAllByText(etiqueta);
+      // Original + Duplicado.
+      expect(etiquetas).toHaveLength(2);
+      for (const p of etiquetas) expect(p.nextElementSibling?.textContent).toBe(valor);
+    }
+    expect(screen.queryByText("Total")).toBeNull();
+    expect(screen.queryByText("$ 12.500")).toBeNull();
+  });
+});
+
 describe("RemitoView — guía diaria", () => {
   it("imprime la guía junto al remito manual", () => {
     render(<RemitoView remito={{ ...remito(), remitoManualNumero: "000123" }} />);
