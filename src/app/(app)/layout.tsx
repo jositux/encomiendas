@@ -26,7 +26,13 @@ export default async function AppLayout({
       <AppSidebar permisos={session.permisos} />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader session={session} sucursal={sucursal} />
-        <main className="flex-1 overflow-y-auto">
+        {/* 2026-10-05: el que scrollea es este <main>, no la ventana. Al
+            tabular, el navegador trae el campo enfocado "apenas" adentro:
+            quedaba pegado al borde de abajo, con el foco recortado y sin ver
+            lo que sigue (el operador lo vivía como "no hace scroll"). El
+            scroll-padding le deja aire arriba y abajo; vale para Tab, para
+            el foco por código y para el teclado del celular. */}
+        <main className="flex-1 overflow-y-auto scroll-pt-6 scroll-pb-32">
           <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
             {children}
           </div>
