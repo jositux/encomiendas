@@ -98,7 +98,7 @@ function TandaDeRecepcion({ permisos, usuarioId, sectores, recorridos }: Props) 
     return (
       <Card>
         <CardContent className="pt-6 text-sm text-muted-foreground">
-          Tu usuario no tiene permiso para recibir envíos ni para asignarles sector o recorrido.
+          Tu usuario no tiene permiso para recibir envíos ni para asignarles sector o ruta.
         </CardContent>
       </Card>
     );
@@ -194,7 +194,7 @@ function TandaDeRecepcion({ permisos, usuarioId, sectores, recorridos }: Props) 
             <p role="alert" className="text-sm font-medium text-destructive">
               {modo.tipo === "sector"
                 ? "Elegí primero el sector: esa lectura no se tomó."
-                : "Elegí primero el recorrido: esa lectura no se tomó."}
+                : "Elegí primero la ruta: esa lectura no se tomó."}
             </p>
           )}
 

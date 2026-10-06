@@ -113,8 +113,8 @@ function elegirSector(id: string) {
 }
 
 function elegirRecorrido(id: string) {
-  fireEvent.click(modo("Reservar recorrido"));
-  fireEvent.change(screen.getByLabelText(/Recorrido con el que salen/), { target: { value: id } });
+  fireEvent.click(modo("Reservar ruta"));
+  fireEvent.change(screen.getByLabelText(/Ruta con la que salen/), { target: { value: id } });
 }
 
 describe("Recepción — qué modos ve cada usuario", () => {
@@ -125,7 +125,7 @@ describe("Recepción — qué modos ve cada usuario", () => {
 
   it("operador: los tres, y arranca en Sólo recibir", () => {
     renderRecepcion(OPERADOR);
-    expect(nombres()).toEqual(["Sólo recibir", "Cambiar sector", "Reservar recorrido"]);
+    expect(nombres()).toEqual(["Sólo recibir", "Cambiar sector", "Reservar ruta"]);
     expect(modo("Sólo recibir")).toHaveAttribute("aria-pressed", "true");
     expect(leyenda()).toHaveTextContent("Recibiendo");
   });
@@ -137,7 +137,7 @@ describe("Recepción — qué modos ve cada usuario", () => {
 
   it("supervisor (sin custodia:registrar): los dos de cambio, y el botón dice Aplicar", () => {
     renderRecepcion(SUPERVISOR);
-    expect(nombres()).toEqual(["Cambiar sector", "Reservar recorrido"]);
+    expect(nombres()).toEqual(["Cambiar sector", "Reservar ruta"]);
     expect(screen.getByRole("button", { name: "Aplicar" })).toBeInTheDocument();
     expect(leyenda()).toHaveTextContent("Elegí el sector para empezar");
   });
@@ -256,8 +256,8 @@ describe("Recepción — un modo con valor no escanea sin el valor", () => {
   it("cambiar de modo no hereda el valor del anterior", () => {
     renderRecepcion();
     elegirSector("sec-centro");
-    fireEvent.click(modo("Reservar recorrido"));
-    expect(leyenda()).toHaveTextContent("Elegí el recorrido para empezar");
+    fireEvent.click(modo("Reservar ruta"));
+    expect(leyenda()).toHaveTextContent("Elegí la ruta para empezar");
     fireEvent.click(modo("Cambiar sector"));
     expect(leyenda()).toHaveTextContent("Elegí el sector para empezar");
   });

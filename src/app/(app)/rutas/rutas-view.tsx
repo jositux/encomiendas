@@ -72,7 +72,7 @@ export function RutasView({
     }
     setNuevoNombre("");
     setSelectedId(resultado.data.id);
-    toast.success("Recorrido creado");
+    toast.success("Ruta creada");
   }
 
   async function handleRemove() {
@@ -83,7 +83,7 @@ export function RutasView({
       return;
     }
     setSelectedId(null);
-    toast.success("Grupo de ruta eliminado");
+    toast.success("Ruta eliminada");
   }
 
   async function handleToggleLocalidad(id: string, checked: boolean) {
@@ -100,14 +100,14 @@ export function RutasView({
   return (
     <div>
       <PageHeader
-        title="Grupos de ruta"
-        description="Recorridos, base que procesa y localidades cubiertas."
+        title="Rutas"
+        description="Rutas, base que procesa y localidades cubiertas."
       />
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
         <Card className="gap-0 py-0">
           <CardHeader className="border-b py-3">
-            <CardTitle className="text-sm">Nombre del nuevo recorrido</CardTitle>
+            <CardTitle className="text-sm">Nombre de la nueva ruta</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2 border-b py-3">
             <Input
@@ -143,7 +143,7 @@ export function RutasView({
         <Card className="h-fit">
           <CardHeader>
             <CardTitle className="text-sm">
-              {selected ? selected.nombre : "Seleccioná un grupo de ruta"}
+              {selected ? selected.nombre : "Seleccioná una ruta"}
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4 px-4">
@@ -151,7 +151,7 @@ export function RutasView({
               <EmptyState
                 icon={RouteIcon}
                 title="Sin selección"
-                description="Elegí un grupo de ruta de la lista para editar su base, chofer y localidades."
+                description="Elegí una ruta de la lista para editar su base, chofer y localidades."
               />
             ) : (
               <>
