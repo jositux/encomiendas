@@ -94,7 +94,7 @@ export function DespachosView({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Despachos"
-        description="Cortar la carga pendiente de la base en planillas, por recorrido."
+        description="Cortar la carga pendiente de la base en planillas, por ruta."
       />
 
       <Card>
@@ -102,13 +102,13 @@ export function DespachosView({
           {recorridos.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               {sinRecorridosPorAlcance
-                ? "No hay recorridos activos que salgan de tu base. Pedí que te asignen a la base correspondiente, o cortá desde una cuenta con acceso a esa base."
-                : "No hay recorridos activos. Creá uno en Rutas antes de cortar un despacho."}
+                ? "No hay rutas activas que salgan de tu base. Pedí que te asignen a la base correspondiente, o cortá desde una cuenta con acceso a esa base."
+                : "No hay rutas activas. Creá una en Rutas antes de cortar un despacho."}
             </p>
           ) : (
             <>
               <div className="grid gap-1.5 sm:max-w-sm">
-                <Label>Recorrido</Label>
+                <Label>Ruta</Label>
                 <Select
                   value={recorridoId}
                   onValueChange={(v) => {
@@ -119,7 +119,7 @@ export function DespachosView({
                   }}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Elegí un recorrido" />
+                    <SelectValue placeholder="Elegí una ruta" />
                   </SelectTrigger>
                   <SelectContent>
                     {recorridos.map((r) => (
@@ -214,7 +214,7 @@ export function DespachosView({
             {resultado.planillas.length === 0 ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <PackageX className="size-4" />
-                El camión sale vacío: no había carga pendiente para este recorrido.
+                El camión sale vacío: no había carga pendiente para esta ruta.
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
