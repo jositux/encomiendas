@@ -20,7 +20,7 @@ export interface RecorridoOfrecido {
 const MODOS: { tipo: TipoDeModo; titulo: string; icono: typeof PackageCheck }[] = [
   { tipo: "recibir", titulo: "Sólo recibir", icono: PackageCheck },
   { tipo: "sector", titulo: "Cambiar sector", icono: MapPinned },
-  { tipo: "recorrido", titulo: "Reservar recorrido", icono: Route },
+  { tipo: "recorrido", titulo: "Reservar ruta", icono: Route },
 ];
 
 const ESTILO_DEL_SELECT =
@@ -111,7 +111,7 @@ export function SelectorDeModo({
       {modo.tipo === "recorrido" && (
         <div className="grid gap-1.5">
           <Label htmlFor="recepcion-recorrido" className="text-xs text-muted-foreground">
-            Recorrido con el que salen los paquetes de esta tanda
+            Ruta con la que salen los paquetes de esta tanda
           </Label>
           <select
             id="recepcion-recorrido"
@@ -125,7 +125,7 @@ export function SelectorDeModo({
             }}
             className={ESTILO_DEL_SELECT}
           >
-            <option value="">Elegí un recorrido</option>
+            <option value="">Elegí una ruta</option>
             {recorridos.map((r) => (
               <option key={r.id} value={r.id}>
                 {mostrarBase ? `${r.nombre} · sale de ${r.baseNombre}` : r.nombre}
@@ -134,7 +134,7 @@ export function SelectorDeModo({
           </select>
           {recorridos.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              No hay recorridos activos que salgan de tu base.
+              No hay rutas activas que salgan de tu base.
             </p>
           )}
         </div>

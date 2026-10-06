@@ -58,7 +58,7 @@ export function UltimoResultado({ lectura }: { lectura: Lectura | null }) {
                 sector ni localidad en la respuesta de la recepción. */}
             <Dato label="Localidad" valor={envio.localidadDestinoNombre ?? "—"} />
             <Dato label="Sector" valor={envio.sector?.nombre ?? "—"} />
-            <Dato label="Recorrido reservado" valor={envio.recorrido?.nombre ?? "—"} />
+            <Dato label="Ruta reservada" valor={envio.recorrido?.nombre ?? "—"} />
             <Dato
               label="Bultos"
               valor={`${envio.cantidadBultos} bulto${envio.cantidadBultos === 1 ? "" : "s"}`}

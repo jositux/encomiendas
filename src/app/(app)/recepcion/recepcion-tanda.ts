@@ -59,7 +59,7 @@ export function leyendaDelModo(modo: Modo, recibe: boolean): string {
   }
   return modo.valor
     ? `${verbo}${recibe ? "reservado para" : "Reservando para"} ${modo.valor.nombre}`
-    : "Elegí el recorrido para empezar";
+    : "Elegí la ruta para empezar";
 }
 
 export function asignacionDelModo(modo: Modo): AsignacionPedida | undefined {
@@ -187,7 +187,7 @@ export function resultadoDeRespuesta(
   }
 
   const sinCambio =
-    asignacion.tipo === "sector" ? "sin cambiar el sector" : "sin reservar el recorrido";
+    asignacion.tipo === "sector" ? "sin cambiar el sector" : "sin reservar la ruta";
   return {
     ...base,
     tono: "aviso",

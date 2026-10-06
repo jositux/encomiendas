@@ -243,7 +243,7 @@ describe("cómo se clasifica cada resultado", () => {
     );
     expect(reserva).toMatchObject({
       tono: "aviso",
-      titulo: "Ya lo tenías, sin reservar el recorrido",
+      titulo: "Ya lo tenías, sin reservar la ruta",
     });
   });
 
